@@ -1,0 +1,28 @@
+{
+  "name": "kibela-to-kibela.ts",
+  "version": "1.0.0",
+  "description": "",
+  "private": true,
+  "engines": {
+    "node": ">= 10"
+  },
+  "scripts": {
+    "run": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "Bit Journey, Inc.",
+  "contributors": [
+    {
+      "name": "gfx",
+      "url": "https://github.com/gfx"
+    }
+  ],
+  "license": "ISC",
+  "dependencies": {
+    "@types/node": "^11.13.0",
+    "dotenv": "^7.0.0",
+    "isomorphic-fetch": "^2.2.1",
+    "ts-node": "^8.0.3",
+    "typescript": "^3.4.2"
+  }
+}
