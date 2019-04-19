@@ -3,3 +3,6 @@ node_modules/
 package-lock.json
 .env
 build/
+real-world-data/
+tmp/
+*.log
