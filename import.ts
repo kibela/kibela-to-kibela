@@ -18,8 +18,6 @@ import { KibelaClient, FORMAT_JSON, FORMAT_MSGPACK } from "./KibelaClient";
 
 const TEAM = ensureNonNull(process.env.KIBELA_TEAM, "KIBELA_TEAM");
 const TOKEN = ensureNonNull(process.env.KIBELA_TOKEN, "KIBELA_TOKEN");
-//const API_ENDPOINT = `https://${TEAM}.kibe.la/api/v1`;
-const API_ENDPOINT = `http://${TEAM}.lvh.me:3000/api/v1`; // FIXME remove this
 const USER_AGENT = `${name}/${version}`;
 
 commander
@@ -40,6 +38,7 @@ const client = new KibelaClient({
   userAgent: USER_AGENT,
   format: commander.json ? FORMAT_JSON : FORMAT_MSGPACK,
   fetch: (fetch as any) as typeof window.fetch,
+  retryCount: 5,
 });
 
 const UploadAttachment = gql`
