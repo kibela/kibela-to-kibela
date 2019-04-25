@@ -51,6 +51,7 @@ export class DefaultSerializer implements DataSerializer {
             extensions: {
               code: "KibelaClient.UNRECOGNIZED_CONTENT_TYPE",
               contentType: mimeType,
+              body: mimeType.startsWith("text/") ? String.fromCharCode(...new Uint16Array(body)) : new Uint8Array(body),
             },
           },
         ],
@@ -143,8 +144,9 @@ export class KibelaClient {
     this.format = options.format || FORMAT_MSGPACK;
     this.endpoint = createEndpoint(options.team);
     this.headers = {
+      "user-agent": options.userAgent,
       "content-type": this.format,
-      accept: this.format,
+      accept: this.format !== FORMAT_JSON ? `${this.format}, application/json` : this.format,
       authorization: `Bearer ${options.accessToken}`,
     };
     this.fetch = options.fetch;
@@ -218,14 +220,17 @@ export class KibelaClient {
 
     const tAfterRawRequest = Date.now();
 
+    if (!response) {
+      throw new NetworkError("Invalid HTTP response", networkErrors);
+    }
+
     if (responseBody && responseBody.errors) {
       this.addToDelayMsIfBudgetExhausted(responseBody.errors);
-
       throw new GraphqlError("GraphQL errors", queryString, variables, responseBody.errors);
     }
 
-    if (!(response && response.ok && rawBody && responseBody && !responseBody.data)) {
-      throw new NetworkError("Invalid GraphQL response", networkErrors);
+    if (!(response.ok && rawBody && responseBody && responseBody.data)) {
+      throw new NetworkError(`Invalid GraphQL response: ${response.status} ${response.statusText} ${response.headers.get("content-type")} ${JSON.stringify(responseBody)}`, networkErrors);
     }
 
     // reset delayMs only if the requesrt succeeded.

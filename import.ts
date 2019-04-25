@@ -125,17 +125,26 @@ async function createNote(filename: string, exportedContent: string): Promise<No
 
   const [, title, content] = /^#\s+(\S[^\n]*)\n\n(.*)/s.exec(md.body)!;
 
+  // Kibela API requires an ISO8601 string representation for DateTime
+  let publishedAt: string | null = null;
+  try {
+    publishedAt = new Date(md.attributes['published_at']).toISOString();
+  } catch (e) {
+    console.warn("WARN: Invalid `published_at`: ", md.attributes['published_at']);
+  }
+
   const result = await client.request({
     query: CreateNote,
     variables: {
       input: {
         title,
         content,
-        draft: false,
+        draft: !!publishedAt,
         coediting: true,
         groupIds: [],
         folderName: null, // FIXME
         authorId: null, // FIXME
+        publishedAt,
       },
     },
   });
