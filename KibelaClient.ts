@@ -7,6 +7,7 @@ import { DocumentNode, OperationDefinitionNode, print } from "graphql";
 import { URL } from "url";
 import debugBuilder from "debug";
 
+// enabled by env DEBUG=KibelaClient
 const debug = debugBuilder("KibelaClient");
 
 const decoder = new StringDecoder("utf8");
@@ -122,6 +123,8 @@ export class NetworkError extends Error {
 
 const DEFAULT_LEAST_DELAY_MS = 100; // as described in https://github.com/kibela/kibela-api-v1-document
 
+const LEAST_DELAY_AFTER_NETWORK_ERROR_MS = 2000;
+
 const DEFAULT_RETRY_COUNT = 0;
 
 export class KibelaClient {
@@ -191,10 +194,9 @@ export class KibelaClient {
           body,
         });
         rawBody = await response.arrayBuffer();
-      } catch (e) {
-        this.delayMs *= 2;
+      } catch (e) { // Network errors including timeout
+        this.delayMs = Math.max(this.delayMs * 2, LEAST_DELAY_AFTER_NETWORK_ERROR_MS);
 
-        // network errors including timeout
         networkErrors.push(e);
         debug("Network error!", e);
         // fallthrough

@@ -1,10 +1,8 @@
 import "dotenv/config"; // to load .env
 
-import util from "util";
 import fs from "fs";
 
 import fetch from "node-fetch";
-import msgpack from "msgpack-lite";
 import unzipper from "unzipper";
 import commander from "commander";
 import TraceError from "trace-error";
@@ -156,35 +154,46 @@ async function createNote(filename: string, exportedContent: string): Promise<No
 async function processZipArchives(zipArchives: ReadonlyArray<string>) {
   let id = 0;
   let dataSize = 0;
+  let successCount = 0;
+  let failureCount = 0;
 
   const logFd = fs.openSync(`transaction-${TRANSACTION_ID}.log`, "wx");
 
   for (const zipArchive of zipArchives) {
-    await fs
-      .createReadStream(zipArchive)
-      .pipe(unzipper.Parse())
-      .on("entry", async (entry: unzipper.Entry) => {
-        const buffer = await entry.buffer();
+    const zipBuffer = await fs.promises.readFile(zipArchive);
+    const directory = await unzipper.Open.buffer(zipBuffer);
 
-        console.log(`Processing [${(++id).toString().padStart(5, "0")}]`, entry.path, entry.type, buffer.byteLength);
-        dataSize += buffer.byteLength;
+    for (const file of directory.files) {
+      const buffer = await file.buffer();
 
-        if (isAttachment(entry.path)) {
-          const newAttachment = await uploadAttachment(entry.path, buffer);
-          attachmentMap.set(entry.path, newAttachment);
-          fs.writeSync(logFd, `${entry.path}\t${newAttachment.path}\n`);
+      const idTag = (++id).toString().padStart(5, "0");
+      console.log(`Processing [${idTag}]`, file.path, buffer.length);
+      dataSize += buffer.byteLength;
+
+      if (!APPLY) {
+        continue; // dry-run
+      }
+
+      try {
+        if (isAttachment(file.path)) {
+          const newAttachment = await uploadAttachment(file.path, buffer);
+          attachmentMap.set(file.path, newAttachment);
+          fs.writeSync(logFd, `${file.path}\t${newAttachment.path}\n`);
         } else {
-          const newNote = await createNote(entry.path, buffer.toString("utf-8"));
-          noteMap.set(entry.path, newNote);
-          fs.writeSync(logFd, `${entry.path}\t${newNote.path}\n`);
+          const newNote = await createNote(file.path, buffer.toString("utf-8"));
+          noteMap.set(file.path, newNote);
+          fs.writeSync(logFd, `${file.path}\t${newNote.path}\n`);
         }
 
-        await entry.autodrain().promise();
-      })
-      .promise();
+        successCount++;
+      } catch (e) {
+        console.error(`Failed to request[${idTag}]`, e);
+        failureCount++;
+      }
+    }
   }
 
-  console.log("data size:", dataSize);
+  console.log(`data size=${dataSize}, success/failure=${successCount}/${failureCount}`, dataSize);
 }
 
 processZipArchives(commander.args);
