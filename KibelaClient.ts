@@ -1,16 +1,14 @@
-// Kibela Client for NodeJS
-// This will be released to npmjs.com when the API becomes stable.
+// Kibela Client for JavaScript
+// This will be released to npmjs.com when the API gets stable.
 
-import msgpack from "msgpack-lite";
-import { StringDecoder } from "string_decoder";
+import * as msgpack from "@msgpack/msgpack";
 import { DocumentNode, OperationDefinitionNode, print } from "graphql";
 import { URL } from "url";
+import { inspect } from "util";
 import debugBuilder from "debug";
 
 // enabled by env DEBUG=KibelaClient
 const debug = debugBuilder("KibelaClient");
-
-const decoder = new StringDecoder("utf8");
 
 function createEndpoint(subdomain: string) {
   return `http://${subdomain}.lvh.me:3000/api/v1`;
@@ -22,8 +20,41 @@ export const FORMAT_MSGPACK = "application/x-msgpack";
 type FormatType = typeof FORMAT_JSON | typeof FORMAT_MSGPACK;
 
 export interface DataSerializer {
-  serialize(mimeType: string, body: object): ArrayBuffer | string;
-  deserialize(mimeType: string, body: ArrayBuffer): any;
+  serialize(mimeType: string, body: object): ArrayBufferView | string;
+  deserialize<T = unknown>(mimeType: string, response: Response): Promise<T>;
+}
+
+function isAsyncIterable<T>(stream: object): stream is AsyncIterable<T> {
+  return !!stream[Symbol.asyncIterator];
+}
+
+async function* asyncIterableFromStream(
+  stream: ReadableStream<Uint8Array> | AsyncIterable<Uint8Array> | null,
+) {
+  if (stream == null) {
+    return;
+  }
+
+  // node-fetch
+  if (isAsyncIterable(stream)) {
+    for await (const buffer of stream) {
+      yield buffer;
+    }
+    return;
+  }
+
+  // WHATWG fetch (not an async iterators)
+  const reader = stream.getReader();
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      yield value;
+    }
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 export class DefaultSerializer implements DataSerializer {
@@ -37,11 +68,11 @@ export class DefaultSerializer implements DataSerializer {
     }
   }
 
-  deserialize(mimeType: string, body: ArrayBuffer) {
+  async deserialize(mimeType: string, response: Response): Promise<any> {
     if (mimeType === FORMAT_MSGPACK) {
-      return msgpack.decode(Buffer.from(body));
+      return await msgpack.decodeAsync(asyncIterableFromStream(response.body));
     } else if (mimeType === FORMAT_JSON) {
-      return JSON.parse(decoder.write(Buffer.from(body)));
+      return await response.json();
     } else {
       // While Kibela is in maintenance mode, it may return text/html or text/plain for the API endpoint.
       return {
@@ -51,11 +82,13 @@ export class DefaultSerializer implements DataSerializer {
             extensions: {
               code: "KibelaClient.UNRECOGNIZED_CONTENT_TYPE",
               contentType: mimeType,
-              body: mimeType.startsWith("text/") ? String.fromCharCode(...new Uint16Array(body)) : new Uint8Array(body),
+              body: mimeType.startsWith("text/")
+                ? await response.text()
+                : new Uint8Array(await response.arrayBuffer()),
             },
           },
         ],
-      }
+      };
     }
   }
 }
@@ -66,7 +99,7 @@ export type KibelaClientOptions = Readonly<{
   team: string;
   accessToken: string;
   userAgent: string;
-  fetch: typeof fetch;
+  fetch: typeof window.fetch; // it also works on NodeJS
 
   leastDelayMs?: number;
   retryCount?: number;
@@ -74,7 +107,7 @@ export type KibelaClientOptions = Readonly<{
   serializer?: DataSerializer;
 }>;
 
-function getOperationName(doc: DocumentNode): string | null {
+export function getOperationName(doc: DocumentNode): string | null {
   return (
     doc.definitions
       .filter(
@@ -114,17 +147,14 @@ export class GraphqlError extends Error {
 }
 
 export class NetworkError extends Error {
-  constructor(
-    message: string,
-    readonly errors: ReadonlyArray<any>,
-  ) {
+  constructor(message: string, readonly errors: ReadonlyArray<any>) {
     super(message);
   }
 }
 
-const DEFAULT_LEAST_DELAY_MS = 100; // as described in https://github.com/kibela/kibela-api-v1-document
-
-const LEAST_DELAY_AFTER_NETWORK_ERROR_MS = 2000;
+// As described in https://github.com/kibela/kibela-api-v1-documentconst
+const DEFAULT_LEAST_DELAY_MS = 100;
+const LEAST_DELAY_AFTER_NETWORK_ERROR_MS = 1000;
 
 const DEFAULT_RETRY_COUNT = 0;
 
@@ -160,7 +190,7 @@ export class KibelaClient {
     variables,
   }: {
     query: DocumentNode;
-    variables: VariablesType;
+    variables?: VariablesType;
   }): Promise<{ data: DataType }> {
     const t0 = Date.now();
 
@@ -168,8 +198,12 @@ export class KibelaClient {
 
     const networkErrors: Array<any> = [];
 
-    const queryString = print(query);
     const operationName = getOperationName(query);
+    if (!operationName) {
+      throw new Error("GraphQL query's operationName is required");
+    }
+
+    const queryString = print(query);
     const body = this.serializer.serialize(this.format, {
       query: queryString,
       operationName,
@@ -179,13 +213,18 @@ export class KibelaClient {
     if (operationName) {
       url.searchParams.set("operationName", operationName);
     }
-    const tBeforeRawRequest = Date.now();
+    const tBeforeRequest = Date.now();
 
     let response: Response | null = null;
-    let rawBody: ArrayBuffer | null = null;
     let responseBody: any = null;
     do {
-      debug("fetch %s (retrying=%d/%d, delayMs=%d)", url, this.retrying, this.retryCount, this.delayMs);
+      debug(
+        "fetch %s (retrying=%d/%d, delayMs=%d)",
+        url,
+        this.retrying,
+        this.retryCount,
+        this.delayMs,
+      );
       await this.sleep(this.delayMs);
       try {
         response = await this.fetch(url.toString(), {
@@ -195,8 +234,8 @@ export class KibelaClient {
           headers: this.headers,
           body,
         });
-        rawBody = await response.arrayBuffer();
-      } catch (e) { // Network errors including timeout
+      } catch (e) {
+        // Network errors including timeout
         this.delayMs = Math.max(this.delayMs * 2, LEAST_DELAY_AFTER_NETWORK_ERROR_MS);
 
         networkErrors.push(e);
@@ -204,9 +243,12 @@ export class KibelaClient {
         // fallthrough
       }
 
-      if (response != null && rawBody != null) {
-        const contentType = this.normalizeMimeType(response.headers.get("content-type")) || this.format;
-        responseBody = this.serializer.deserialize(contentType, rawBody);
+      if (response != null) {
+        const contentType =
+          this.normalizeMimeType(response.headers.get("content-type")) || this.format;
+
+        // TODO: handle network errors when downloading response body is not finished.
+        responseBody = await this.serializer.deserialize(contentType, response);
 
         if (responseBody.errors) {
           if (!this.addToDelayMsIfBudgetExhausted(responseBody.errors)) {
@@ -218,7 +260,7 @@ export class KibelaClient {
       }
     } while (++this.retrying < this.retryCount);
 
-    const tAfterRawRequest = Date.now();
+    const tAfterRequest = Date.now();
 
     if (!response) {
       throw new NetworkError("Invalid HTTP response", networkErrors);
@@ -229,26 +271,26 @@ export class KibelaClient {
       throw new GraphqlError("GraphQL errors", queryString, variables, responseBody.errors);
     }
 
-    if (!(response.ok && rawBody && responseBody && responseBody.data)) {
-      throw new NetworkError(`Invalid GraphQL response: ${response.status} ${response.statusText} ${response.headers.get("content-type")} ${JSON.stringify(responseBody)}`, networkErrors);
+    if (!(response.ok && responseBody && responseBody.data)) {
+      throw new NetworkError(
+        `Invalid GraphQL response: ${response.status} ${response.statusText} ${response.headers.get(
+          "content-type",
+        )} ${inspect(responseBody)}`,
+        networkErrors,
+      );
     }
 
-    // reset delayMs only if the requesrt succeeded.
-    this.delayMs = this.leastDelayMs;
-
     const tEnd = Date.now();
-
     const xRuntime = Math.round(Number.parseFloat(response.headers.get("x-runtime") || "0") * 1000);
+
+    // request metadata
     responseBody[META] = {
       time: {
-        serialize: tBeforeRawRequest - t0,
         api: xRuntime,
-        htttp: tAfterRawRequest - tBeforeRawRequest - xRuntime,
-        deserialize: tEnd - tAfterRawRequest,
+        client: tAfterRequest - tBeforeRequest - xRuntime,
         total: tEnd - t0,
       },
       contentType: response.headers.get("content-type"),
-      contentLength: rawBody.byteLength,
     };
 
     return responseBody;

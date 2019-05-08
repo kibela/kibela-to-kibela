@@ -1,6 +1,6 @@
 import "dotenv/config"; // to load .env
 
-import fs from "fs";
+import fs, { promises as fsp } from "fs";
 
 import fetch from "node-fetch";
 import unzipper from "unzipper";
@@ -9,6 +9,7 @@ import TraceError from "trace-error";
 import { ulid } from "ulid";
 import gql from "graphql-tag";
 import frontMatter from "front-matter";
+import * as ltsv from "ltsv";
 
 import { name, version } from "./package.json";
 import { ensureNonNull } from "./ensureNonNull";
@@ -20,7 +21,7 @@ const USER_AGENT = `${name}/${version}`;
 
 commander
   .version(version)
-  .option("--json", "Use JSON instead of MessagePack in serialization")
+  .option("--json", "Use JSON instead of MessagePack in serialization for debugging")
   .option("--apply", "Apply the actual change to the target team; default to dry-run mode.")
   .parse(process.argv);
 
@@ -128,9 +129,9 @@ async function createNote(filename: string, exportedContent: string): Promise<No
   // Kibela API requires an ISO8601 string representation for DateTime
   let publishedAt: string | null = null;
   try {
-    publishedAt = new Date(md.attributes['published_at']).toISOString();
+    publishedAt = new Date(md.attributes["published_at"]).toISOString();
   } catch (e) {
-    console.warn("WARN: Invalid `published_at`: ", md.attributes['published_at']);
+    console.warn("WARN: Invalid `published_at`: ", md.attributes["published_at"]);
   }
 
   const result = await client.request({
@@ -166,17 +167,28 @@ async function processZipArchives(zipArchives: ReadonlyArray<string>) {
   let successCount = 0;
   let failureCount = 0;
 
-  const logFd = fs.openSync(`transaction-${TRANSACTION_ID}.log`, "wx");
+  const logFile = `transaction-${TRANSACTION_ID}.log`;
+  const logFh = await fsp.open(logFile, "wx");
+  process.on("exit", () => {
+    if (fs.statSync(logFile).size === 0) {
+      fs.unlinkSync(logFile);
+    }
+  });
+  process.on("SIGINT", () => {
+    // just exit to handle "exit" events to cleanup
+    process.exit();
+  });
 
   for (const zipArchive of zipArchives) {
-    const zipBuffer = await fs.promises.readFile(zipArchive);
+    const zipBuffer = await fsp.readFile(zipArchive);
     const directory = await unzipper.Open.buffer(zipBuffer);
 
     for (const file of directory.files) {
       const buffer = await file.buffer();
 
       const idTag = (++id).toString().padStart(5, "0");
-      console.log(`Processing [${idTag}]`, file.path, buffer.length);
+      const label = APPLY ? "Processing" : "Processing (dry-run)";
+      console.log(`${label} [${idTag}]`, file.path, buffer.length);
       dataSize += buffer.byteLength;
 
       if (!APPLY) {
@@ -187,11 +199,25 @@ async function processZipArchives(zipArchives: ReadonlyArray<string>) {
         if (isAttachment(file.path)) {
           const newAttachment = await uploadAttachment(file.path, buffer);
           attachmentMap.set(file.path, newAttachment);
-          fs.writeSync(logFd, `${file.path}\t${newAttachment.path}\n`);
+          await logFh.appendFile(
+            ltsv.format({
+              file: file.path,
+              type: "attachment",
+              kibelaPath: newAttachment.path,
+              kibelaId: newAttachment.id,
+            }) + "\n",
+          );
         } else {
           const newNote = await createNote(file.path, buffer.toString("utf-8"));
           noteMap.set(file.path, newNote);
-          fs.writeSync(logFd, `${file.path}\t${newNote.path}\n`);
+          await logFh.appendFile(
+            ltsv.format({
+              file: file.path,
+              type: "note",
+              kibelaPath: newNote.path,
+              kibelaId: newNote.id,
+            }) + "\n",
+          );
         }
 
         successCount++;
@@ -202,7 +228,12 @@ async function processZipArchives(zipArchives: ReadonlyArray<string>) {
     }
   }
 
-  console.log(`data size=${dataSize}, success/failure=${successCount}/${failureCount}`, dataSize);
+  console.log(
+    `data size=${Math.round(
+      dataSize / 1024 ** 2,
+    )}MiB, success/failure=${successCount}/${failureCount}`,
+    dataSize,
+  );
 }
 
 processZipArchives(commander.args);
