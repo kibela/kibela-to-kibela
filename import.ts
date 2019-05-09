@@ -9,7 +9,6 @@ import TraceError from "trace-error";
 import { ulid } from "ulid";
 import gql from "graphql-tag";
 import frontMatter from "front-matter";
-import * as ltsv from "ltsv";
 
 import { name, version } from "./package.json";
 import { ensureNonNull } from "./ensureNonNull";
@@ -200,9 +199,9 @@ async function processZipArchives(zipArchives: ReadonlyArray<string>) {
           const newAttachment = await uploadAttachment(file.path, buffer);
           attachmentMap.set(file.path, newAttachment);
           await logFh.appendFile(
-            ltsv.format({
-              file: file.path,
+            JSON.stringify({
               type: "attachment",
+              file: file.path,
               kibelaPath: newAttachment.path,
               kibelaId: newAttachment.id,
             }) + "\n",
@@ -211,9 +210,9 @@ async function processZipArchives(zipArchives: ReadonlyArray<string>) {
           const newNote = await createNote(file.path, buffer.toString("utf-8"));
           noteMap.set(file.path, newNote);
           await logFh.appendFile(
-            ltsv.format({
-              file: file.path,
+            JSON.stringify({
               type: "note",
+              file: file.path,
               kibelaPath: newNote.path,
               kibelaId: newNote.id,
             }) + "\n",

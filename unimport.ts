@@ -6,9 +6,8 @@ import fs from "fs";
 import fetch from "node-fetch";
 import gql from "graphql-tag";
 import commander from "commander";
-import * as ltsv from "ltsv";
 
-import { KibelaClient, FORMAT_JSON, FORMAT_MSGPACK, getOperationName } from "./KibelaClient";
+import { KibelaClient, FORMAT_JSON, FORMAT_MSGPACK, getOperationName, GraphqlError } from "./KibelaClient";
 import { ensureNonNull } from "./ensureNonNull";
 import { name, version } from "./package.json";
 
@@ -49,6 +48,18 @@ const DeleteAttachment = gql`
   }
 `;
 
+require("util").inspect.defaultOptions.depth = 100;
+
+function isNotFoundError(e: unknown) {
+  if (e instanceof GraphqlError) {
+    const ext = e.errors[0].extensions;
+    if (ext && ext.code === "NOT_FOUND") {
+      return true;
+    }
+    return false;
+  }
+}
+
 async function main(logFiles: ReadonlyArray<string>) {
   for (const logFile of logFiles) {
     const lines = readline.createInterface({
@@ -56,9 +67,9 @@ async function main(logFiles: ReadonlyArray<string>) {
     });
 
     for await (const line of lines) {
-      const log = ltsv.parseLine(line);
+      const log = JSON.parse(line);
       const query = log.type === "attachment" ? DeleteAttachment : DeleteNote;
-      console.log(`${getOperationName(query)} id=${log.kibelaId}`);
+      console.log(`${getOperationName(query)} id=${log.kibelaId}, path=${log.kibelaPath}`);
 
       if (APPLY) {
         try {
@@ -67,7 +78,15 @@ async function main(logFiles: ReadonlyArray<string>) {
             variables: { input: { id: log.kibelaId } },
           });
         } catch (e) {
-          console.error("  ... failed", e);
+          if (e instanceof GraphqlError) {
+            if (isNotFoundError(e)) {
+              console.log(" ... resource not found");
+            } else {
+              console.warn("  ... failed with", e.message, e.errors);
+            }
+          } else {
+            console.error(" ... failed with", e);
+          }
         }
       }
     }
