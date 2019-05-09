@@ -10,9 +10,9 @@ import debugBuilder from "debug";
 // enabled by env DEBUG=KibelaClient
 const debug = debugBuilder("KibelaClient");
 
-function createEndpoint(subdomain: string) {
-  return `http://${subdomain}.lvh.me:3000/api/v1`;
-  // return `https://${subdomain}.kibe.la/api/v1`;
+const DEFAULT_ENDPOINT = "https://${KIBELA_TEAM}.kibe.la/api/v1";
+export function createEndpoint(subdomain: string, endpoint = DEFAULT_ENDPOINT) {
+  return endpoint.replace(/\${KIBELA_TEAM}/, subdomain);
 }
 
 export const FORMAT_JSON = "application/json";
@@ -93,7 +93,7 @@ export class DefaultSerializer implements DataSerializer {
   }
 }
 
-export const META = Symbol("META");
+export const $metadata = Symbol("metadata");
 
 export type KibelaClientOptions = Readonly<{
   team: string;
@@ -105,6 +105,7 @@ export type KibelaClientOptions = Readonly<{
   retryCount?: number;
   format?: FormatType;
   serializer?: DataSerializer;
+  endpoint?: string;
 }>;
 
 export function getOperationName(doc: DocumentNode): string | null {
@@ -175,7 +176,7 @@ const LEAST_DELAY_AFTER_NETWORK_ERROR_MS = 1000;
 const DEFAULT_RETRY_COUNT = 0;
 
 export class KibelaClient {
-  private readonly endpoint: string;
+  public readonly endpoint: string;
   private readonly format: FormatType;
   private readonly headers: Readonly<Record<string, string>>;
   private readonly fetch: typeof fetch; // browser's fetch
@@ -188,7 +189,7 @@ export class KibelaClient {
 
   constructor(options: KibelaClientOptions) {
     this.format = options.format || FORMAT_MSGPACK;
-    this.endpoint = createEndpoint(options.team);
+    this.endpoint = createEndpoint(options.team, options.endpoint);
     this.headers = {
       "user-agent": options.userAgent,
       "content-type": this.format,
@@ -300,7 +301,7 @@ export class KibelaClient {
     const xRuntime = Math.round(Number.parseFloat(response.headers.get("x-runtime") || "0") * 1000);
 
     // request metadata
-    responseBody[META] = {
+    responseBody[$metadata] = {
       time: {
         api: xRuntime,
         client: tAfterRequest - tBeforeRequest - xRuntime,

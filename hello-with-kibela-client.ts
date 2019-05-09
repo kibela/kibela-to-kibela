@@ -5,11 +5,11 @@ import fetch from "node-fetch";
 import gql from "graphql-tag";
 
 import { KibelaClient } from "./KibelaClient";
-import { ensureNonNull } from "./ensureNonNull";
 import { name, version } from "./package.json";
+import { getEnv } from "./getEnv";
 
-const TEAM = ensureNonNull(process.env.KIBELA_TEAM, "KIBELA_TEAM");
-const TOKEN = ensureNonNull(process.env.KIBELA_TOKEN, "KIBELA_TOKEN");
+const TEAM = getEnv("KIBELA_TEAM");
+const TOKEN = getEnv("KIBELA_TOKEN");
 const USER_AGENT = `${name}/${version}`;
 
 const client = new KibelaClient({
@@ -21,6 +21,7 @@ const client = new KibelaClient({
 });
 
 async function main() {
+  console.log(`Querying to ${client.endpoint} ...`)
   const response = await client.request({
     query: gql`
       query HelloKibeaClient {
