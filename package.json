@@ -7,7 +7,7 @@
     "node": ">= 10"
   },
   "scripts": {
-    "run": "echo \"Error: no test specified\" && exit 1"
+    "test": "tsc"
   },
   "keywords": [],
   "author": "Bit Journey, Inc.",

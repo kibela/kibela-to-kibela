@@ -7,7 +7,7 @@ import fetch from "node-fetch";
 import gql from "graphql-tag";
 import commander from "commander";
 
-import { KibelaClient, FORMAT_JSON, FORMAT_MSGPACK, getOperationName, GraphqlError } from "./KibelaClient";
+import { KibelaClient, FORMAT_JSON, FORMAT_MSGPACK, getOperationName, GraphqlError, isNotFoundError } from "./KibelaClient";
 import { ensureNonNull } from "./ensureNonNull";
 import { name, version } from "./package.json";
 
@@ -49,16 +49,6 @@ const DeleteAttachment = gql`
 `;
 
 require("util").inspect.defaultOptions.depth = 100;
-
-function isNotFoundError(e: unknown) {
-  if (e instanceof GraphqlError) {
-    const ext = e.errors[0].extensions;
-    if (ext && ext.code === "NOT_FOUND") {
-      return true;
-    }
-    return false;
-  }
-}
 
 async function main(logFiles: ReadonlyArray<string>) {
   for (const logFile of logFiles) {

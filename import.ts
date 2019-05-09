@@ -187,7 +187,7 @@ async function processZipArchives(zipArchives: ReadonlyArray<string>) {
 
       const idTag = (++id).toString().padStart(5, "0");
       const label = APPLY ? "Processing" : "Processing (dry-run)";
-      console.log(`${label} [${idTag}]`, file.path, buffer.length);
+      console.log(`${label} [${idTag}] ${file.path} (${buffer.byteLength} bytes)`);
       dataSize += buffer.byteLength;
 
       if (!APPLY) {

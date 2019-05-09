@@ -133,7 +133,13 @@ export type BudgetExceededErrorType = {
   };
 };
 
-export type ErrorType = BasicErrorType | BudgetExceededErrorType;
+export type NotFoundError = {
+  extensions: {
+    code: "NOT_FOUND";
+  };
+};
+
+export type ErrorType = BasicErrorType | BudgetExceededErrorType | NotFoundError;
 
 export class GraphqlError extends Error {
   constructor(
@@ -150,6 +156,16 @@ export class NetworkError extends Error {
   constructor(message: string, readonly errors: ReadonlyArray<any>) {
     super(message);
   }
+}
+
+export function isNotFoundError(e: unknown): e is NotFoundError {
+  if (e instanceof GraphqlError) {
+    const ext = e.errors[0].extensions;
+    if (ext && ext.code === "NOT_FOUND") {
+      return true;
+    }
+  }
+  return false;
 }
 
 // As described in https://github.com/kibela/kibela-api-v1-documentconst
