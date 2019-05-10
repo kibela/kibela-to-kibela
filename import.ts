@@ -9,28 +9,49 @@ import TraceError from "trace-error";
 import { ulid } from "ulid";
 import gql from "graphql-tag";
 import frontMatter from "front-matter";
+import { basename } from "path";
 
 import { name, version } from "./package.json";
-import { ensureNonNull } from "./ensureNonNull";
-import { KibelaClient, FORMAT_JSON, FORMAT_MSGPACK } from "./KibelaClient";
+import {
+  KibelaClient,
+  FORMAT_JSON,
+  FORMAT_MSGPACK,
+  ensureStringIsPresent,
+  getEnv,
+} from "@kibela/kibela-client";
 
-const TEAM = ensureNonNull(process.env.KIBELA_TEAM, "KIBELA_TEAM");
-const TOKEN = ensureNonNull(process.env.KIBELA_TOKEN, "KIBELA_TOKEN");
+const TEAM = ensureStringIsPresent(getEnv("KIBELA_TEAM"), "KIBELA_TEAM");
+const TOKEN = ensureStringIsPresent(getEnv("KIBELA_TOKEN"), "KIBELA_TOKEN");
+const ENDPOINT = getEnv("KIBELA_ENDPOINT"); //
 const USER_AGENT = `${name}/${version}`;
 
 commander
   .version(version)
   .option("--json", "Use JSON instead of MessagePack in serialization for debugging")
   .option("--apply", "Apply the actual change to the target team; default to dry-run mode.")
+  .option(
+    "--exported-from <subdomain>",
+    "A Kibela team name that the archives come from",
+    /^[a-zA-Z0-9-]+$/,
+  )
   .parse(process.argv);
 
 const APPLY = commander.apply && !commander.dryRun;
+
+const exportedFrom = commander.exportedFrom as (string | undefined);
+if (!stringIsPresent(exportedFrom)) {
+  console.log("--exported-from <subdomain> is required.");
+  process.exit(1);
+}
+const kibelaDomainExportedFrom = `https://${exportedFrom}.kibe.la`;
+console.log(`The archives come from ${kibelaDomainExportedFrom}\n`);
 
 const TRANSACTION_ID = ulid();
 
 // main
 
 const client = new KibelaClient({
+  endpoint: ENDPOINT,
   team: TEAM,
   accessToken: TOKEN,
   userAgent: USER_AGENT,
@@ -112,25 +133,59 @@ function isAttachment(path: string): boolean {
   return /^kibela-\w+-\d+\/attachments\//.test(path);
 }
 
-async function uploadAttachment(name: string, buffer: Buffer): Promise<AttachmentType> {
-  const dummy = ulid();
+async function uploadAttachment(name: string, data: Buffer): Promise<AttachmentType> {
+  if (!APPLY) {
+    const dummy = ulid();
+    return {
+      id: dummy,
+      path: dummy,
+    };
+  }
+
+  const result = await client.request({
+    query: UploadAttachment,
+    variables: {
+      input: {
+        name: basename(name),
+        data,
+        kind: "GENERAL",
+      },
+    },
+  });
+
   return {
-    id: dummy,
-    path: dummy,
+    id: result.data.uploadAttachment.attachment.id,
+    path: result.data.uploadAttachment.attachment.path,
   };
 }
 
-async function createNote(filename: string, exportedContent: string): Promise<NoteType> {
+function stringIsPresent(s: string | null | undefined): s is string {
+  return s != null && s.length > 0;
+}
+
+async function createNote(_filename: string, exportedContent: string): Promise<NoteType> {
   const md = frontMatter<any>(exportedContent);
 
   const [, title, content] = /^#\s+(\S[^\n]*)\n\n(.*)/s.exec(md.body)!;
 
   // Kibela API requires an ISO8601 string representation for DateTime
-  let publishedAt: string | null = null;
-  try {
-    publishedAt = new Date(md.attributes["published_at"]).toISOString();
-  } catch (e) {
-    console.warn("WARN: Invalid `published_at`: ", md.attributes["published_at"]);
+  const publishedAt = stringIsPresent(md.attributes["published_at"])
+    ? new Date(md.attributes["published_at"]).toISOString()
+    : null;
+
+  //console.log(md.attributes);
+
+  if (!APPLY) {
+    const dummy = ulid();
+    return {
+      id: dummy,
+      path: dummy,
+      author: md.attributes.author,
+      title,
+      content,
+      publishedAt: md.attributes.published_at,
+      comments: [], // FIXME
+    };
   }
 
   const result = await client.request({
@@ -169,7 +224,7 @@ async function processZipArchives(zipArchives: ReadonlyArray<string>) {
   const logFile = `transaction-${TRANSACTION_ID}.log`;
   const logFh = await fsp.open(logFile, "wx");
   process.on("exit", () => {
-    if (fs.statSync(logFile).size === 0) {
+    if (fs.statSync(logFile).size === 0 || !APPLY) {
       fs.unlinkSync(logFile);
     }
   });
@@ -189,10 +244,6 @@ async function processZipArchives(zipArchives: ReadonlyArray<string>) {
       const label = APPLY ? "Processing" : "Processing (dry-run)";
       console.log(`${label} [${idTag}] ${file.path} (${buffer.byteLength} bytes)`);
       dataSize += buffer.byteLength;
-
-      if (!APPLY) {
-        continue; // dry-run
-      }
 
       try {
         if (isAttachment(file.path)) {
@@ -215,6 +266,8 @@ async function processZipArchives(zipArchives: ReadonlyArray<string>) {
               file: file.path,
               kibelaPath: newNote.path,
               kibelaId: newNote.id,
+              content: newNote.content,
+              comments: newNote.comments,
             }) + "\n",
           );
         }
@@ -228,11 +281,23 @@ async function processZipArchives(zipArchives: ReadonlyArray<string>) {
   }
 
   console.log(
-    `data size=${Math.round(
+    `Uploaded data size=${Math.round(
       dataSize / 1024 ** 2,
     )}MiB, success/failure=${successCount}/${failureCount}`,
     dataSize,
   );
+  console.log("\n=====================\n");
+
+  console.log("Replacing paths in the markdown contents");
+
+  const KibelaUrlPattern = new RegExp(`\b(${kibelaDomainExportedFrom}[^\s])\b`);
+
+  for (const [path, note] of noteMap.entries()) {
+    const matched = KibelaUrlPattern.exec(note.content);
+    if (matched) {
+      console.log(matched);
+    }
+  }
 }
 
 processZipArchives(commander.args);

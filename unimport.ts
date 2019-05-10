@@ -7,12 +7,21 @@ import fetch from "node-fetch";
 import gql from "graphql-tag";
 import commander from "commander";
 
-import { KibelaClient, FORMAT_JSON, FORMAT_MSGPACK, getOperationName, GraphqlError, isNotFoundError } from "./KibelaClient";
-import { ensureNonNull } from "./ensureNonNull";
+import {
+  KibelaClient,
+  FORMAT_JSON,
+  FORMAT_MSGPACK,
+  getOperationName,
+  GraphqlError,
+  isNotFoundError,
+  ensureStringIsPresent,
+  getEnv,
+} from "@kibela/kibela-client";
 import { name, version } from "./package.json";
 
-const TEAM = ensureNonNull(process.env.KIBELA_TEAM, "KIBELA_TEAM");
-const TOKEN = ensureNonNull(process.env.KIBELA_TOKEN, "KIBELA_TOKEN");
+const TEAM = ensureStringIsPresent(getEnv("KIBELA_TEAM"), "KIBELA_TEAM");
+const TOKEN = ensureStringIsPresent(getEnv("KIBELA_TOKEN"), "KIBELA_TOKEN");
+const ENDPOINT = getEnv("KIBELA_ENDPOINT"); //
 const USER_AGENT = `${name}/${version}`;
 
 commander
@@ -24,6 +33,7 @@ commander
 const APPLY = commander.apply as boolean;
 
 const client = new KibelaClient({
+  endpoint: ENDPOINT,
   team: TEAM,
   accessToken: TOKEN,
   userAgent: USER_AGENT,
