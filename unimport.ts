@@ -6,6 +6,7 @@ import fs from "fs";
 import fetch from "node-fetch";
 import gql from "graphql-tag";
 import commander from "commander";
+import util from "util";
 
 import {
   KibelaClient,
@@ -18,6 +19,8 @@ import {
   getEnv,
 } from "@kibela/kibela-client";
 import { name, version } from "./package.json";
+
+util.inspect.defaultOptions.depth = 100;
 
 const TEAM = ensureStringIsPresent(getEnv("KIBELA_TEAM"), "KIBELA_TEAM");
 const TOKEN = ensureStringIsPresent(getEnv("KIBELA_TOKEN"), "KIBELA_TOKEN");
@@ -57,8 +60,6 @@ const DeleteAttachment = gql`
     }
   }
 `;
-
-require("util").inspect.defaultOptions.depth = 100;
 
 async function main(logFiles: ReadonlyArray<string>) {
   for (const logFile of logFiles) {

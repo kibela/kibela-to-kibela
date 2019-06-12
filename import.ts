@@ -1,6 +1,6 @@
 import "dotenv/config"; // to load .env
 
-import fs, { promises as fsp } from "fs";
+import fs from "fs";
 
 import fetch from "node-fetch";
 import unzipper from "unzipper";
@@ -93,6 +93,15 @@ const CreateComment = gql`
   }
 `;
 
+const GetAuthor = gql`
+  query GetAuthor($account: String!) {
+    user: userByAccount(account: $account) {
+      id
+      account
+    }
+  }
+`;
+
 type RelayId = unknown;
 
 type Connection<T> = Readonly<{
@@ -119,9 +128,15 @@ type NoteType = {
   author: string;
   title: string;
   content: string;
+  folderName: string | null;
   publishedAt: string;
 
   comments: ReadonlyArray<CommentType>;
+};
+
+type AuthorType = {
+  id: RelayId;
+  account: string;
 };
 
 // the original path to the new path mapping
@@ -163,7 +178,30 @@ function stringIsPresent(s: string | null | undefined): s is string {
   return s != null && s.length > 0;
 }
 
-async function createNote(_filename: string, exportedContent: string): Promise<NoteType> {
+const accountToAuthorCache = new Map<string, AuthorType>();
+
+async function getAuthor(account: string): Promise<AuthorType> {
+  if (accountToAuthorCache.has(account)) {
+    return accountToAuthorCache.get(account)!;
+  } else {
+    const result = await client.request({
+      query: GetAuthor,
+      variables: { account },
+    });
+    return result.data!.user;
+  }
+}
+
+/**
+ *
+ * @param filename "kibela-$team-$seq/(?:notes|blogs|wikis)/$folderName/$id-$title.md`
+ */
+function extractFolderNameFromFilename(filename: string): string | null {
+  const matched = /[^/]+\/(?:notes|blogs|wikis)\/(?:(.+)\/)?[^/]+$/ui.exec(filename);
+  return matched && matched[1];
+}
+
+async function createNote(filename: string, exportedContent: string): Promise<NoteType> {
   const md = frontMatter<any>(exportedContent);
 
   const [, title, content] = /^#\s+(\S[^\n]*)\n\n(.*)/s.exec(md.body)!;
@@ -173,6 +211,9 @@ async function createNote(_filename: string, exportedContent: string): Promise<N
     ? new Date(md.attributes["published_at"]).toISOString()
     : null;
 
+  const authorAccount = md.attributes.author.replace(/^@/, "");
+  const folderName = extractFolderNameFromFilename(filename);
+
   //console.log(md.attributes);
 
   if (!APPLY) {
@@ -180,13 +221,16 @@ async function createNote(_filename: string, exportedContent: string): Promise<N
     return {
       id: dummy,
       path: dummy,
-      author: md.attributes.author,
+      author: authorAccount,
       title,
       content,
+      folderName,
       publishedAt: md.attributes.published_at,
       comments: [], // FIXME
     };
   }
+
+  const authorId = null; // (await getAuthor(authorAccount)).id;
 
   const result = await client.request({
     query: CreateNote,
@@ -196,9 +240,9 @@ async function createNote(_filename: string, exportedContent: string): Promise<N
         content,
         draft: !!publishedAt,
         coediting: true,
-        groupIds: [],
-        folderName: null, // FIXME
-        authorId: null, // FIXME
+        groupIds: [], // TODO: speccified by --group option
+        folderName,
+        authorId,
         publishedAt,
       },
     },
@@ -207,9 +251,10 @@ async function createNote(_filename: string, exportedContent: string): Promise<N
   return {
     id: result.data.createNote.note.id,
     path: result.data.createNote.note.path,
-    author: md.attributes.author,
+    author: authorAccount,
     title,
     content,
+    folderName,
     publishedAt: md.attributes.published_at,
     comments: [], // FIXME
   };
@@ -222,7 +267,7 @@ async function processZipArchives(zipArchives: ReadonlyArray<string>) {
   let failureCount = 0;
 
   const logFile = `transaction-${TRANSACTION_ID}.log`;
-  const logFh = await fsp.open(logFile, "wx");
+  const logFh = await fs.promises.open(logFile, "wx");
   process.on("exit", () => {
     if (fs.statSync(logFile).size === 0 || !APPLY) {
       fs.unlinkSync(logFile);
@@ -234,7 +279,7 @@ async function processZipArchives(zipArchives: ReadonlyArray<string>) {
   });
 
   for (const zipArchive of zipArchives) {
-    const zipBuffer = await fsp.readFile(zipArchive);
+    const zipBuffer = await fs.promises.readFile(zipArchive);
     const directory = await unzipper.Open.buffer(zipBuffer);
 
     for (const file of directory.files) {
