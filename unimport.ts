@@ -54,8 +54,8 @@ const DeleteNote = gql`
 `;
 
 const DeleteAttachment = gql`
-  mutation DeleteAttachment($input: DeleteNoteInput!) {
-    deleteNote(input: $input) {
+  mutation DeleteAttachment($input: DeleteAttachmentInput!) {
+    deleteAttachment(input: $input) {
       clientMutationId
     }
   }

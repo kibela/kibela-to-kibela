@@ -61,7 +61,7 @@ const client = new KibelaClient({
 });
 
 const UploadAttachment = gql`
-  mutation UploadAttachment($input: UploadAttachmentInput) {
+  mutation UploadAttachment($input: UploadAttachmentInput!) {
     uploadAttachment(input: $input) {
       attachment {
         id
