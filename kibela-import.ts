@@ -116,7 +116,7 @@ type AttachmentType = {
 };
 
 type CommentType = {
-  id: RelayId;
+  id: RelayId | null;
   author: string;
   publishedAt: string;
   content: string;
@@ -138,11 +138,6 @@ type AuthorType = {
   id: RelayId;
   account: string;
 };
-
-// the original path to the new path mapping
-// note that new paths are only available after create it on the cloud (i.e. Kibela)
-const attachmentMap = new Map<string, AttachmentType>();
-const noteMap = new Map<string, NoteType>();
 
 function isAttachment(path: string): boolean {
   return /^kibela-\w+-\d+\/attachments\//.test(path);
@@ -213,7 +208,14 @@ async function createNote(filename: string, exportedContent: string): Promise<No
 
   const authorAccount = md.attributes.author.replace(/^@/, "");
   const folderName = extractFolderNameFromFilename(filename);
-
+  const comments: ReadonlyArray<CommentType> = md.attributes.comments.map((c) => {
+    return {
+      id: null,
+      author: c.author,
+      content: c.content,
+      publishedAt: c.published_at,
+    };
+  });
   //console.log(md.attributes);
 
   if (!APPLY) {
@@ -226,7 +228,7 @@ async function createNote(filename: string, exportedContent: string): Promise<No
       content,
       folderName,
       publishedAt: md.attributes.published_at,
-      comments: [], // FIXME
+      comments,
     };
   }
 
@@ -256,7 +258,36 @@ async function createNote(filename: string, exportedContent: string): Promise<No
     content,
     folderName,
     publishedAt: md.attributes.published_at,
-    comments: [], // FIXME
+    comments,
+  };
+}
+
+async function createComment(note, comment) {
+  if (!APPLY) {
+    const dummy = ulid();
+    return {
+      id: dummy,
+      path: dummy,
+      content: comment.content,
+    };
+  }
+
+  const result = await client.request({
+    query: CreateComment,
+    variables: {
+      input: {
+        commentableId: note.id,
+        conent: comment.content,
+        publishedAt: comment.publishedAt,
+        authorId: null, // TODO
+      },
+    },
+  });
+
+  return {
+    id: result.data.createComment.comment.id,
+    path: result.data.createComment.comment.path,
+    content: comment.content,
   };
 }
 
@@ -270,7 +301,7 @@ async function processZipArchives(zipArchives: ReadonlyArray<string>) {
   const logFh = await fs.promises.open(logFile, "wx");
   process.on("exit", () => {
     if (fs.statSync(logFile).size === 0 || !APPLY) {
-      fs.unlinkSync(logFile);
+      //fs.unlinkSync(logFile);
     }
   });
   process.on("SIGINT", () => {
@@ -293,7 +324,6 @@ async function processZipArchives(zipArchives: ReadonlyArray<string>) {
       try {
         if (isAttachment(file.path)) {
           const newAttachment = await uploadAttachment(file.path, buffer);
-          attachmentMap.set(file.path, newAttachment);
           await logFh.appendFile(
             JSON.stringify({
               type: "attachment",
@@ -303,8 +333,8 @@ async function processZipArchives(zipArchives: ReadonlyArray<string>) {
             }) + "\n",
           );
         } else {
-          const newNote = await createNote(file.path, buffer.toString("utf-8"));
-          noteMap.set(file.path, newNote);
+          const markdownWithFrontMatter = buffer.toString("utf-8");
+          const newNote = await createNote(file.path, markdownWithFrontMatter);
           await logFh.appendFile(
             JSON.stringify({
               type: "note",
@@ -312,9 +342,21 @@ async function processZipArchives(zipArchives: ReadonlyArray<string>) {
               kibelaPath: newNote.path,
               kibelaId: newNote.id,
               content: newNote.content,
-              comments: newNote.comments,
             }) + "\n",
           );
+
+          for (const comment of newNote.comments) {
+            const newComment = await createComment(newNote, comment);
+            await logFh.appendFile(
+              JSON.stringify({
+                type: "comment",
+                file: file.path,
+                kibelaPath: newComment.path,
+                kibelaId: newComment.id,
+                content: newComment.content,
+              }) + "\n",
+            );
+            }
         }
 
         successCount++;
@@ -332,17 +374,6 @@ async function processZipArchives(zipArchives: ReadonlyArray<string>) {
     dataSize,
   );
   console.log("\n=====================\n");
-
-  console.log("Replacing paths in the markdown contents");
-
-  const KibelaUrlPattern = new RegExp(`\b(${kibelaDomainExportedFrom}[^\s])\b`);
-
-  for (const [path, note] of noteMap.entries()) {
-    const matched = KibelaUrlPattern.exec(note.content);
-    if (matched) {
-      console.log(matched);
-    }
-  }
 }
 
 processZipArchives(commander.args);
