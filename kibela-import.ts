@@ -1,11 +1,11 @@
 import "dotenv/config"; // to load .env
 
 import fs from "fs";
+import path from "path";
 
 import fetch from "node-fetch";
 import unzipper from "unzipper";
 import commander from "commander";
-import TraceError from "trace-error";
 import { ulid } from "ulid";
 import gql from "graphql-tag";
 import frontMatter from "front-matter";
@@ -104,12 +104,6 @@ const GetAuthor = gql`
 
 type RelayId = unknown;
 
-type Connection<T> = Readonly<{
-  edges: ReadonlyArray<{
-    readonly node: T;
-  }>;
-}>;
-
 type AttachmentType = {
   id: RelayId;
   path: string;
@@ -139,6 +133,11 @@ type AuthorType = {
   account: string;
 };
 
+function getSourceId(filename: string) {
+  const basename = path.basename(filename);
+  return /^([^-\.]+)/.exec(basename)![1];
+}
+
 function isAttachment(path: string): boolean {
   return /^kibela-\w+-\d+\/attachments\//.test(path);
 }
@@ -148,7 +147,7 @@ async function uploadAttachment(name: string, data: Buffer): Promise<AttachmentT
     const dummy = ulid();
     return {
       id: dummy,
-      path: dummy,
+      path: `/attachments/${dummy}`,
     };
   }
 
@@ -192,14 +191,14 @@ async function getAuthor(account: string): Promise<AuthorType> {
  * @param filename "kibela-$team-$seq/(?:notes|blogs|wikis)/$folderName/$id-$title.md`
  */
 function extractFolderNameFromFilename(filename: string): string | null {
-  const matched = /[^/]+\/(?:notes|blogs|wikis)\/(?:(.+)\/)?[^/]+$/ui.exec(filename);
+  const matched = /[^/]+\/(?:notes|blogs|wikis)\/(?:(.+)\/)?[^/]+$/iu.exec(filename);
   return matched && matched[1];
 }
 
 async function createNote(filename: string, exportedContent: string): Promise<NoteType> {
   const md = frontMatter<any>(exportedContent);
 
-  const [, title, content] = /^#\s+(\S[^\n]*)\n\n(.*)/s.exec(md.body)!;
+  const [, title, content] = /^# +([^\n]*)\n\n(.*)/s.exec(md.body)!;
 
   // Kibela API requires an ISO8601 string representation for DateTime
   const publishedAt = stringIsPresent(md.attributes["published_at"])
@@ -222,7 +221,7 @@ async function createNote(filename: string, exportedContent: string): Promise<No
     const dummy = ulid();
     return {
       id: dummy,
-      path: dummy,
+      path: `/notes/${dummy}`,
       author: authorAccount,
       title,
       content,
@@ -267,7 +266,7 @@ async function createComment(note, comment) {
     const dummy = ulid();
     return {
       id: dummy,
-      path: dummy,
+      path: `${note.path}#comment_${dummy}`,
       content: comment.content,
     };
   }
@@ -318,7 +317,8 @@ async function processZipArchives(zipArchives: ReadonlyArray<string>) {
 
       const idTag = (++id).toString().padStart(5, "0");
       const label = APPLY ? "Processing" : "Processing (dry-run)";
-      console.log(`${label} [${idTag}] ${file.path} (${buffer.byteLength} bytes)`);
+      const byteLengthKiB = Math.round(buffer.byteLength / 1024);
+      console.log(`${label} [${idTag}] ${file.path} (${byteLengthKiB} KiB)`);
       dataSize += buffer.byteLength;
 
       try {
@@ -328,8 +328,9 @@ async function processZipArchives(zipArchives: ReadonlyArray<string>) {
             JSON.stringify({
               type: "attachment",
               file: file.path,
-              kibelaPath: newAttachment.path,
-              kibelaId: newAttachment.id,
+              sourceId: getSourceId(file.path),
+              destPath: newAttachment.path,
+              destId: newAttachment.id,
             }) + "\n",
           );
         } else {
@@ -339,8 +340,9 @@ async function processZipArchives(zipArchives: ReadonlyArray<string>) {
             JSON.stringify({
               type: "note",
               file: file.path,
-              kibelaPath: newNote.path,
-              kibelaId: newNote.id,
+              sourceId: getSourceId(file.path),
+              destPath: newNote.path,
+              destRelayId: newNote.id,
               content: newNote.content,
             }) + "\n",
           );
@@ -351,12 +353,13 @@ async function processZipArchives(zipArchives: ReadonlyArray<string>) {
               JSON.stringify({
                 type: "comment",
                 file: file.path,
-                kibelaPath: newComment.path,
-                kibelaId: newComment.id,
+                sourceId: getSourceId(file.path), // TODO: currently exported data has no comment id
+                destPath: newComment.path,
+                destRelayId: newComment.id,
                 content: newComment.content,
               }) + "\n",
             );
-            }
+          }
         }
 
         successCount++;
@@ -367,13 +370,11 @@ async function processZipArchives(zipArchives: ReadonlyArray<string>) {
     }
   }
 
+  const dataSizeMiB = Math.round(dataSize / 1024 ** 2);
   console.log(
-    `Uploaded data size=${Math.round(
-      dataSize / 1024 ** 2,
-    )}MiB, success/failure=${successCount}/${failureCount}`,
-    dataSize,
+    `Uploaded data size=${dataSizeMiB}MiB, success/failure=${successCount}/${failureCount}`,
   );
-  console.log("\n=====================\n");
+  console.log(`\nInitial phase finished (logfile=${logFile})\n`);
 }
 
 processZipArchives(commander.args);

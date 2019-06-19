@@ -23,16 +23,19 @@
     "@kibela/kibela-client": "github:kibela/kibela-client-js",
     "@msgpack/msgpack": "^1.4.0",
     "@types/graphql": "^14.2.0",
+    "@types/lodash": "^4.14.134",
     "@types/node": "^11.13.14",
     "@types/node-fetch": "^2.3.6",
     "@types/unzipper": "^0.9.2",
     "commander": "^2.20.0",
     "commonmark": "^0.29.0",
     "debug": "^4.1.1",
+    "diff": "^4.0.1",
     "dotenv": "^7.0.0",
     "front-matter": "^3.0.2",
     "graphql": "^14.3.0",
     "graphql-tag": "^2.10.1",
+    "lodash": "^4.17.11",
     "node-fetch": "^2.5.0",
     "non-null": "^2.0.1",
     "trace-error": "^1.0.1",
@@ -41,5 +44,8 @@
     "typescript": "^3.4.5",
     "ulid": "^2.3.0",
     "unzipper": "^0.9.11"
+  },
+  "devDependencies": {
+    "@types/diff": "^4.0.2"
   }
 }
