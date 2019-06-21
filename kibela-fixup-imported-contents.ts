@@ -45,6 +45,15 @@ if (!stringIsPresent(exportedFrom)) {
 const kibelaUrlExportedFrom = `https://${exportedFrom}.kibe.la`;
 console.log(`The archives come from ${kibelaUrlExportedFrom}\n`);
 
+const rawUrlPattern = new RegExp(
+  `\\b(${escapeRegExp(kibelaUrlExportedFrom)}\\b[^\\s+\\)\\]?#]+)`,
+  "g",
+);
+
+// handles only absolute paths (/notes/id) and relative paths (../id)
+// URLs are handled by the next secrion
+const mdLinkPattern = /\[[^\[]+\]\(([/\.][^\)]*)\)+/g;
+
 const client = new KibelaClient({
   endpoint: ENDPOINT,
   team: TEAM,
@@ -70,6 +79,21 @@ const noteMap = new Map<string, LogType>();
 const commentMap = new Map<string, LogType>();
 const attachmentMap = new Map<string, LogType>();
 
+const updateNoteContent = gql`
+  mutation FixupNoteContent($input: UpdateNoteContentInput!) {
+    updateNoteContent(input: $input) {
+      clientMutationId
+    }
+  }
+`;
+const updateCommentContent = gql`
+  mutation FixupCommentContent($input: UpdateCommentInput!) {
+    updateComment(input: $input) {
+      clientMutationId
+    }
+  }
+`;
+
 function stringIsPresent(s: string | null | undefined): s is string {
   return s != null && s.length > 0;
 }
@@ -92,11 +116,11 @@ function getDestPath(pathOrUrl: string) {
   const n = /\/(?:@[^/\s]+|blogs|wikis|notes)\/(\w+)/.exec(pathOrUrl);
   if (n) {
     const sourceId = n[1];
-    const note = noteMap.get(sourceId);
-    if (note) {
-      return /^https?:/.test(pathOrUrl) ? `https://${TEAM}.kibe.la${note.destPath}` : note.destPath;
+    const resource = noteMap.get(sourceId) || commentMap.get(sourceId);
+    if (resource) {
+      return /^https?:/.test(pathOrUrl) ? `https://${TEAM}.kibe.la${resource.destPath}` : resource.destPath;
     } else {
-      console.warn(`[WARN] No attachment found for ${pathOrUrl}`);
+      console.warn(`[WARN] No note found for ${pathOrUrl}`);
       return null;
     }
   }
@@ -104,7 +128,7 @@ function getDestPath(pathOrUrl: string) {
   return null;
 }
 
-function fixupContent(content: string, matched: RegExpExecArray) {
+function fixupContentWithMatchedResult(content: string, matched: RegExpExecArray) {
   const sourcePath = matched[1];
   const destPath = getDestPath(sourcePath);
 
@@ -116,6 +140,18 @@ function fixupContent(content: string, matched: RegExpExecArray) {
   }
 
   return content;
+}
+
+function fixupContent(baseContent: string) {
+  let matched: RegExpExecArray | null = null;
+  let newContent = baseContent;
+  while ((matched = mdLinkPattern.exec(baseContent))) {
+    newContent = fixupContentWithMatchedResult(newContent, matched);
+  }
+  while ((matched = rawUrlPattern.exec(baseContent))) {
+    newContent = fixupContentWithMatchedResult(newContent, matched);
+  }
+  return newContent;
 }
 
 async function main(logFiles: ReadonlyArray<string>) {
@@ -152,33 +188,61 @@ async function main(logFiles: ReadonlyArray<string>) {
     `Loaded: notes=${noteMap.size} comments=${commentMap.size} attachments=${attachmentMap.size}`,
   );
 
-  const rawUrlPattern = new RegExp(
-    `\\b(${escapeRegExp(kibelaUrlExportedFrom)}\\b[^\\s+\\)\\]?#]+)`,
-    "g",
-  );
-
-  // handles only absolute paths (/notes/id) and relative paths (../id)
-  // URLs are handled by the next secrion
-  const mdLinkPattern = /\[[^\[]+\]\(([/\.][^\)]*)\)+/g;
   for (const note of noteMap.values()) {
     if (!note.content) {
       continue;
     }
 
-    let matched: RegExpExecArray | null = null;
+    const baseContent = note.content;
+    const newContent = fixupContent(baseContent);
 
-    let content = note.content;
-    while ((matched = mdLinkPattern.exec(note.content))) {
-      content = fixupContent(content, matched);
+    if (newContent !== baseContent) {
+      //console.log(createPatch(note.destPath, baseContent, newContent));
+
+      if (APPLY) {
+        try {
+          await client.request({
+            query: updateNoteContent,
+            variables: {
+              input: {
+                id: note.destRelayId,
+                baseContent,
+                newContent,
+              },
+            },
+          });
+        } catch (error) {
+          console.error(error);
+        }
+      }
+    }
+  }
+
+  for (const comment of commentMap.values()) {
+    if (!comment.content) {
+      continue;
     }
 
-    while ((matched = rawUrlPattern.exec(note.content))) {
-      content = fixupContent(content, matched);
-    }
+    const baseContent = comment.content;
+    const newContent = fixupContent(baseContent);
+    if (newContent !== baseContent) {
+      console.log(createPatch(comment.destPath + "#comment", baseContent, newContent));
 
-    if (content !== note.content) {
-      console.log(`TODO: update content for ${note.destPath}`);
-      console.log(createPatch(note.destPath, note.content, content));
+      if (APPLY) {
+        try {
+          await client.request({
+            query: updateCommentContent,
+            variables: {
+              input: {
+                id: comment.destRelayId,
+                content: newContent,
+              },
+            },
+          });
+        } catch (error) {
+          console.error(error);
+        }
+      }
     }
   }
 }
