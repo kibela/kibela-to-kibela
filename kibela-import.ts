@@ -276,8 +276,8 @@ async function createComment(note, comment) {
     variables: {
       input: {
         commentableId: note.id,
-        conent: comment.content,
-        publishedAt: comment.publishedAt,
+        content: comment.content,
+        publishedAt: new Date(comment.publishedAt).toISOString(),
         authorId: null, // TODO
       },
     },

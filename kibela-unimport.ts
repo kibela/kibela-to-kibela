@@ -53,6 +53,14 @@ const DeleteNote = gql`
   }
 `;
 
+const DeleteComment = gql`
+  mutation DeleteComment($input: DeleteCommentInput!) {
+    deleteComment(input: $input) {
+      clientMutationId
+    }
+  }
+`;
+
 const DeleteAttachment = gql`
   mutation DeleteAttachment($input: DeleteAttachmentInput!) {
     deleteAttachment(input: $input) {
@@ -60,6 +68,12 @@ const DeleteAttachment = gql`
     }
   }
 `;
+
+const typeToQuery = new Map<string, ReturnType<typeof gql>>([
+  ["note", DeleteNote],
+  ["comment", DeleteComment],
+  ["attachment", DeleteAttachment],
+]);
 
 async function main(logFiles: ReadonlyArray<string>) {
   for (const logFile of logFiles) {
@@ -69,14 +83,17 @@ async function main(logFiles: ReadonlyArray<string>) {
 
     for await (const line of lines) {
       const log = JSON.parse(line);
-      const query = log.type === "attachment" ? DeleteAttachment : DeleteNote;
-      console.log(`${getOperationName(query)} id=${log.kibelaId}, path=${log.kibelaPath}`);
+      const query = typeToQuery.get(log.type);
+      if (!query) {
+        throw new Error(`No query for log.type=${log.type}`);
+      }
+      console.log(`${getOperationName(query)} id=${log.destRelayId}, path=${log.destPath}`);
 
       if (APPLY) {
         try {
           await client.request({
             query,
-            variables: { input: { id: log.kibelaId } },
+            variables: { input: { id: log.destRelayId } },
           });
         } catch (e) {
           if (e instanceof GraphqlError) {
