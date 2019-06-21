@@ -4,7 +4,7 @@ This script imports Kibela resources from archive files exported from a Kibela t
 
 ## Prerequisites
 
-NodeJS v10 or greater.
+NodeJS v12 or greater.
 
 ## Setup
 
@@ -15,8 +15,14 @@ npm install
 # Configure KIBELA_TEAM and KIBELA_TOKEN
 code .env
 
-# Run a simple script
-npx ts-node import.ts path-to-archive-files
+# Run the import script
+npx ts-node kibela-import.ts path-to-archive-files --exported-from <subdomain> [--apply] kibela-<subdomain>-<id>.zip...
+
+# Fix up the paths
+npx ts-node kibela-fixup-imported-content.ts --exported-from <subdomain> [--apply] transaction-*.log
+
+# Unimport the imported resources
+npx ts-node kibela-unimport.ts [--appply] transaction-*.log
 ```
 
 ## License

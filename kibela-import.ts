@@ -300,7 +300,7 @@ async function processZipArchives(zipArchives: ReadonlyArray<string>) {
   const logFh = await fs.promises.open(logFile, "wx");
   process.on("exit", () => {
     if (fs.statSync(logFile).size === 0 || !APPLY) {
-      //fs.unlinkSync(logFile);
+      fs.unlinkSync(logFile);
     }
   });
   process.on("SIGINT", () => {
