@@ -5,8 +5,6 @@ import fs from "fs";
 import fetch from "node-fetch";
 import gql from "graphql-tag";
 import commander from "commander";
-import util from "util";
-import path from "path";
 import { escapeRegExp } from "lodash";
 import { createPatch } from "diff";
 
@@ -118,7 +116,9 @@ function getDestPath(pathOrUrl: string) {
     const sourceId = n[1];
     const resource = noteMap.get(sourceId) || commentMap.get(sourceId);
     if (resource) {
-      return /^https?:/.test(pathOrUrl) ? `https://${TEAM}.kibe.la${resource.destPath}` : resource.destPath;
+      return /^https?:/.test(pathOrUrl)
+        ? `https://${TEAM}.kibe.la${resource.destPath}`
+        : resource.destPath;
     } else {
       console.warn(`[WARN] No note found for ${pathOrUrl}`);
       return null;
