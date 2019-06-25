@@ -30,7 +30,7 @@ const HelloKibelaClient = gql`
 `;
 
 async function main() {
-  console.log(`Querying to ${client.endpoint} ...`);
+  console.log(`Requesting to ${client.endpoint} ...`);
   const response = await client.request({
     query: HelloKibelaClient,
   });

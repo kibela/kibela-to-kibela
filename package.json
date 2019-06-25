@@ -8,7 +8,7 @@
   },
   "scripts": {
     "test": "tsc --noEmit",
-    "ping": "ts-node hello-with-kibela-client.ts"
+    "ping": "ts-node kibela-ping.ts"
   },
   "keywords": [],
   "author": "Bit Journey, Inc.",
