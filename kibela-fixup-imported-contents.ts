@@ -1,30 +1,19 @@
+#!/usr/bin/env npx ts-node
+
 import "dotenv/config"; // to load .env
 
 import readline from "readline";
 import fs from "fs";
-import fetch from "node-fetch";
 import gql from "graphql-tag";
 import commander from "commander";
 import { escapeRegExp } from "lodash";
 import { createPatch } from "diff";
+import { version } from "./package.json";
 
-import {
-  ensureStringIsPresent,
-  getEnv,
-  KibelaClient,
-  FORMAT_JSON,
-  FORMAT_MSGPACK,
-} from "@kibela/kibela-client";
-import { name, version } from "./package.json";
-
-const TEAM = ensureStringIsPresent(getEnv("KIBELA_TEAM"), "KIBELA_TEAM");
-const TOKEN = ensureStringIsPresent(getEnv("KIBELA_TOKEN"), "KIBELA_TOKEN");
-const ENDPOINT = getEnv("KIBELA_ENDPOINT"); // optional
-const USER_AGENT = `${name}/${version}`;
+import { client, ping, TEAM } from "./kibela-config";
 
 commander
   .version(version)
-  .option("--json", "Use JSON instead of MessagePack in serialization for debugging")
   .option("--apply", "Apply the actual change to the target team; default to dry-run mode.")
   .option(
     "--exported-from <subdomain>",
@@ -51,16 +40,6 @@ const rawUrlPattern = new RegExp(
 // handles only absolute paths (/notes/id) and relative paths (../id)
 // URLs are handled by the next secrion
 const mdLinkPattern = /\[[^\[]+\]\(([/\.][^\)]*)\)+/g;
-
-const client = new KibelaClient({
-  endpoint: ENDPOINT,
-  team: TEAM,
-  accessToken: TOKEN,
-  userAgent: USER_AGENT,
-  format: commander.json ? FORMAT_JSON : FORMAT_MSGPACK,
-  fetch: (fetch as any) as typeof window.fetch,
-  retryCount: 5,
-});
 
 type RelayId = unknown;
 
@@ -155,6 +134,8 @@ function fixupContent(baseContent: string) {
 }
 
 async function main(logFiles: ReadonlyArray<string>) {
+  await ping();
+
   for (const logFile of logFiles) {
     console.log(`Loading ${logFile}`);
 

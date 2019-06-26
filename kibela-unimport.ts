@@ -1,49 +1,28 @@
-#!ts-node
+#!/usr/bin/env npx ts-node
 import "dotenv/config";
 
 import readline from "readline";
 import fs from "fs";
-import fetch from "node-fetch";
 import gql from "graphql-tag";
 import commander from "commander";
 import util from "util";
 
 import {
-  KibelaClient,
-  FORMAT_JSON,
-  FORMAT_MSGPACK,
   getOperationName,
   GraphqlError,
   isNotFoundError,
-  ensureStringIsPresent,
-  getEnv,
 } from "@kibela/kibela-client";
-import { name, version } from "./package.json";
+import { version } from "./package.json";
+import { client, ping } from "./kibela-config";
 
 util.inspect.defaultOptions.depth = 100;
 
-const TEAM = ensureStringIsPresent(getEnv("KIBELA_TEAM"), "KIBELA_TEAM");
-const TOKEN = ensureStringIsPresent(getEnv("KIBELA_TOKEN"), "KIBELA_TOKEN");
-const ENDPOINT = getEnv("KIBELA_ENDPOINT"); //
-const USER_AGENT = `${name}/${version}`;
-
 commander
   .version(version)
-  .option("--json", "Use JSON instead of MessagePack in serialization for debugging")
   .option("--apply", "Apply the actual change to the target team; default to dry-run mode.")
   .parse(process.argv);
 
 const APPLY = commander.apply as boolean;
-
-const client = new KibelaClient({
-  endpoint: ENDPOINT,
-  team: TEAM,
-  accessToken: TOKEN,
-  userAgent: USER_AGENT,
-  format: commander.json ? FORMAT_JSON : FORMAT_MSGPACK,
-  fetch: (fetch as any) as typeof window.fetch,
-  retryCount: 5,
-});
 
 const DeleteNote = gql`
   mutation DeleteNote($input: DeleteNoteInput!) {
@@ -76,6 +55,8 @@ const typeToQuery = new Map<string, ReturnType<typeof gql>>([
 ]);
 
 async function main(logFiles: ReadonlyArray<string>) {
+  await ping();
+
   for (const logFile of logFiles) {
     const lines = readline.createInterface({
       input: fs.createReadStream(logFile),

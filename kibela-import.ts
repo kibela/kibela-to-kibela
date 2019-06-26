@@ -1,9 +1,10 @@
+#!/usr/bin/env npx ts-node
+
 import "dotenv/config"; // to load .env
 
 import fs from "fs";
 import path from "path";
 
-import fetch from "node-fetch";
 import unzipper from "unzipper";
 import commander from "commander";
 import { ulid } from "ulid";
@@ -11,23 +12,11 @@ import gql from "graphql-tag";
 import frontMatter from "front-matter";
 import { basename } from "path";
 
-import { name, version } from "./package.json";
-import {
-  KibelaClient,
-  FORMAT_JSON,
-  FORMAT_MSGPACK,
-  ensureStringIsPresent,
-  getEnv,
-} from "@kibela/kibela-client";
-
-const TEAM = ensureStringIsPresent(getEnv("KIBELA_TEAM"), "KIBELA_TEAM");
-const TOKEN = ensureStringIsPresent(getEnv("KIBELA_TOKEN"), "KIBELA_TOKEN");
-const ENDPOINT = getEnv("KIBELA_ENDPOINT"); //
-const USER_AGENT = `${name}/${version}`;
+import { version } from "./package.json";
+import { client, ping } from "./kibela-config";
 
 commander
   .version(version)
-  .option("--json", "Use JSON instead of MessagePack in serialization for debugging")
   .option("--apply", "Apply the actual change to the target team; default to dry-run mode.")
   .option(
     "--exported-from <subdomain>",
@@ -49,16 +38,6 @@ console.log(`The archives come from ${kibelaDomainExportedFrom}\n`);
 const TRANSACTION_ID = ulid();
 
 // main
-
-const client = new KibelaClient({
-  endpoint: ENDPOINT,
-  team: TEAM,
-  accessToken: TOKEN,
-  userAgent: USER_AGENT,
-  format: commander.json ? FORMAT_JSON : FORMAT_MSGPACK,
-  fetch: (fetch as any) as typeof window.fetch,
-  retryCount: 5,
-});
 
 const UploadAttachment = gql`
   mutation UploadAttachment($input: UploadAttachmentInput!) {
@@ -112,8 +91,8 @@ type AttachmentType = {
 type CommentType = {
   id: RelayId | null;
   author: string;
-  publishedAt: string;
   content: string;
+  publishedAt: Date;
 };
 
 type NoteType = {
@@ -123,7 +102,7 @@ type NoteType = {
   title: string;
   content: string;
   folderName: string | null;
-  publishedAt: string;
+  publishedAt: Date;
 
   comments: ReadonlyArray<CommentType>;
 };
@@ -195,15 +174,16 @@ function extractFolderNameFromFilename(filename: string): string | null {
   return matched && matched[1];
 }
 
-async function createNote(filename: string, exportedContent: string): Promise<NoteType> {
+async function createNote(filename: string, exportedContent: string): Promise<NoteType | null> {
   const md = frontMatter<any>(exportedContent);
 
   const [, title, content] = /^# +([^\n]*)\n\n(.*)/s.exec(md.body)!;
 
-  // Kibela API requires an ISO8601 string representation for DateTime
-  const publishedAt = stringIsPresent(md.attributes["published_at"])
-    ? new Date(md.attributes["published_at"]).toISOString()
-    : null;
+  if (!stringIsPresent(md.attributes["published_at"])) {
+    // ignore draft notes
+    return null;
+  }
+  const publishedAt = new Date(md.attributes["published_at"])
 
   const authorAccount = md.attributes.author.replace(/^@/, "");
   const folderName = extractFolderNameFromFilename(filename);
@@ -226,7 +206,7 @@ async function createNote(filename: string, exportedContent: string): Promise<No
       title,
       content,
       folderName,
-      publishedAt: md.attributes.published_at,
+      publishedAt,
       comments,
     };
   }
@@ -239,7 +219,6 @@ async function createNote(filename: string, exportedContent: string): Promise<No
       input: {
         title,
         content,
-        draft: !!publishedAt,
         coediting: true,
         groupIds: [], // TODO: speccified by --group option
         folderName,
@@ -256,7 +235,7 @@ async function createNote(filename: string, exportedContent: string): Promise<No
     title,
     content,
     folderName,
-    publishedAt: md.attributes.published_at,
+    publishedAt,
     comments,
   };
 }
@@ -277,7 +256,7 @@ async function createComment(note, comment) {
       input: {
         commentableId: note.id,
         content: comment.content,
-        publishedAt: new Date(comment.publishedAt).toISOString(),
+        publishedAt: new Date(comment.publishedAt),
         authorId: null, // TODO
       },
     },
@@ -287,10 +266,13 @@ async function createComment(note, comment) {
     id: result.data.createComment.comment.id,
     path: result.data.createComment.comment.path,
     content: comment.content,
+    publishedAt: new Date(comment.publishedAt),
   };
 }
 
 async function processZipArchives(zipArchives: ReadonlyArray<string>) {
+  await ping();
+
   let id = 0;
   let dataSize = 0;
   let successCount = 0;
@@ -336,6 +318,9 @@ async function processZipArchives(zipArchives: ReadonlyArray<string>) {
         } else {
           const markdownWithFrontMatter = buffer.toString("utf-8");
           const newNote = await createNote(file.path, markdownWithFrontMatter);
+          if (newNote == null) {
+            continue;
+          }
           await logFh.appendFile(
             JSON.stringify({
               type: "note",
