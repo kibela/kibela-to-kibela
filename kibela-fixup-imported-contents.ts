@@ -37,6 +37,12 @@ const rawUrlPattern = new RegExp(
   "g",
 );
 
+const urlPrefixPatternToReplace = new RegExp(
+  `^${escapeRegExp(kibelaUrlExportedFrom)}\\b`,
+)
+
+const newUrlPrefix = `https://${TEAM}.kibe.la`;
+
 // handles only absolute paths (/notes/id) and relative paths (../id)
 // URLs are handled by the next secrion
 const mdLinkPattern = /\[[^\[]+\]\(([/\.][^\)]*)\)+/g;
@@ -90,21 +96,24 @@ function getDestPath(pathOrUrl: string) {
 
   // only handles notes (/@:account/:id, /blogs/:id, /wikis/:id, /notes/:id),
   // Note that id will be changed to string in a future.
-  const n = /\/(?:@[^/\s]+|blogs|wikis|notes)\/(\w+)/.exec(pathOrUrl);
+  const n = /\/(?:@[^/\s]+|blogs|wikis|notes)(?:\/[^/]+)*\/(\w+)/.exec(pathOrUrl);
   if (n) {
     const sourceId = n[1];
     const resource = noteMap.get(sourceId) || commentMap.get(sourceId);
     if (resource) {
       return /^https?:/.test(pathOrUrl)
-        ? `https://${TEAM}.kibe.la${resource.destPath}`
+        ? `${newUrlPrefix}${resource.destPath}`
         : resource.destPath;
     } else {
+      // maybe it is a folder URL
       console.warn(`[WARN] No note found for ${pathOrUrl}`);
-      return null;
+
+      // fallthrough
     }
   }
 
-  return null;
+  // fallback: to replace the subdomain
+  return pathOrUrl.replace(urlPrefixPatternToReplace, newUrlPrefix);
 }
 
 function fixupContentWithMatchedResult(content: string, matched: RegExpExecArray) {
@@ -130,6 +139,7 @@ function fixupContent(baseContent: string) {
   while ((matched = rawUrlPattern.exec(baseContent))) {
     newContent = fixupContentWithMatchedResult(newContent, matched);
   }
+
   return newContent;
 }
 
@@ -178,7 +188,7 @@ async function main(logFiles: ReadonlyArray<string>) {
     const newContent = fixupContent(baseContent);
 
     if (newContent !== baseContent) {
-      //console.log(createPatch(note.destPath, baseContent, newContent));
+      console.log(createPatch(note.destPath, baseContent, newContent));
 
       if (APPLY) {
         try {
@@ -228,4 +238,12 @@ async function main(logFiles: ReadonlyArray<string>) {
   }
 }
 
-main(commander.args);
+function test() {
+  console.log("https://foo.kibe.la/", "to", getDestPath("https://foo.kibe.la/"));
+}
+
+if (!process.env.KIBELA_TO_KIBELA_TEST) {
+  main(commander.args);
+} else {
+  test();
+}
