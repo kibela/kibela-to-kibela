@@ -69,7 +69,7 @@ const updateNoteContent = gql`
     }
   }
 `;
-const updateCommentContent = gql`
+const updateComment = gql`
   mutation FixupCommentContent($input: UpdateCommentInput!) {
     updateComment(input: $input) {
       clientMutationId
@@ -199,6 +199,7 @@ async function main(logFiles: ReadonlyArray<string>) {
                 id: note.destRelayId,
                 baseContent,
                 newContent,
+                touch: false,
               },
             },
           });
@@ -222,11 +223,12 @@ async function main(logFiles: ReadonlyArray<string>) {
       if (APPLY) {
         try {
           await client.request({
-            query: updateCommentContent,
+            query: updateComment,
             variables: {
               input: {
                 id: comment.destRelayId,
                 content: newContent,
+                touch: false,
               },
             },
           });
