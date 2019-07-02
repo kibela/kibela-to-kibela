@@ -2,7 +2,7 @@
 
 **注意: このスクリプトは現在開発中です。実際のデータで試すことはおすすめません。もし実行する場合は自己責任でお願いします。**
 
-Kibelaの「エクスポート」機能でエクスポートしたZIPファイルを、再びKibelaにimportしなおすスクリプトです。
+ある [Kibela](https://kibe.la) team の「エクスポート」機能でエクスポートしたZIPファイルを、ほかのKibela teamにimportしなおすスクリプトです。
 
 ## TODO
 
@@ -12,7 +12,6 @@ Kibelaの「エクスポート」機能でエクスポートしたZIPファイ�
 * [ ] 通知やウェブフックの発動などの抑制オプション
 
 ## 機能
-
 
 ping以外のスクリプトはデフォルトで **dry-run** を行います。実際に適用するときは `--apply` オプションを与えてください。
 
@@ -79,6 +78,10 @@ code .env
 
 npm run ping # to test configurations
 ```
+
+## See Also
+
+* https://github.com/kibela/kibela-api-v1-document
 
 ## License
 
