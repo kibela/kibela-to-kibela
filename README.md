@@ -26,23 +26,43 @@ Kibela Web APIを叩くための設定を確認するためのスクリプトで
 
 実際にリソースのimportを行うスクリプトです。また、NoteやCommen本文のパスも新しいチームのパスに修正します。
 
-最終的に `transaction-*.log` というログを生成します。このログを `kibela-unimport` スクリプトに与えると、importしたリソースをすべて削除します。
+このスクリプトは最終的に `transaction-*.log` というログを生成します。
+
+このログは次に `kibela-fixup-contents` を実行するときに必要です。また、ログを `kibela-unimport` スクリプトに与えると、importしたリソースをすべて削除します。
 
 `--exported-from <subdomain>` オプションでexport元のsubdomainを指定してください。
 
+なお、デフォルトではdry-runモードで起動するため何も処理をしません。処理を実際に行いたいときは `--apply` オプションを与えてください。
+
+```console
+./kibela-import.ts --exported-from <subdomain> [--apply] kibela-<subdomain>-<n>.zip...
+```
+
 ## kibela-fixup-contents
 
-`kibela-import` でimportしたcontentにあるexport元のリンク / URL をimport先のものに修正します。
+`kibela-import` でimportしたcontentにあるexport元のリンク / URL をimport先のものにベストエフォートで修正します。
 
 ただし、Kibelaは歴史的経緯により様々なURLフォーマットがあり、すべてを正しく修正できるわけではないことをご了承ください。
 
 `--exported-from <subdomain>` オプションでexport元のsubdomainを指定してください。
+
+なお、デフォルトではdry-runモードで起動するため何も処理をしません。処理を実際に行いたいときは `--apply` オプションを与えてください。
+
+```console
+./kibela-fixup-contents.ts --exported-from <subdomain> [--apply] transactio-*.log
+```
 
 ### kibela-unimport
 
 `kibela-import` でimportしたリソースを削除します。
 
 import後に行ったリソースの変更もすべて削除されるため注意してください。
+
+なお、デフォルトではdry-runモードで起動するため何も処理をしません。処理を実際に行いたいときは `--apply` オプションを与えてください。
+
+```console
+./kibela-unimport.ts [--apply] transactio-*.log
+```
 
 ## Prerequisites
 
