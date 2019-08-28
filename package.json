@@ -22,6 +22,7 @@
   "dependencies": {
     "@kibela/kibela-client": "github:kibela/kibela-client-js",
     "@msgpack/msgpack": "^1.4.5",
+    "@types/diff": "^4.0.2",
     "@types/graphql": "^14.2.2",
     "@types/lodash": "^4.14.134",
     "@types/node": "^12",
@@ -39,13 +40,12 @@
     "node-fetch": "^2.5.0",
     "non-null": "^2.0.1",
     "trace-error": "^1.0.1",
-    "ts-node": "^8.3.0",
     "tslib": "^1.9.3",
-    "typescript": "^3.5.2",
     "ulid": "^2.3.0",
     "unzipper": "^0.9.11"
   },
   "devDependencies": {
-    "@types/diff": "^4.0.2"
+    "ts-node": "^8.3.0",
+    "typescript": "^3.5.2"
   }
 }
