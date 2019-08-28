@@ -271,7 +271,9 @@ async function createComment(note, comment) {
 }
 
 async function processZipArchives(zipArchives: ReadonlyArray<string>) {
-  await ping();
+  if (APPLY) {
+    await ping();
+  }
 
   let id = 0;
   let dataSize = 0;

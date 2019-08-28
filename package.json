@@ -7,7 +7,7 @@
     "node": ">= 12"
   },
   "scripts": {
-    "test": "tsc --noEmit",
+    "test": "tsc --noEmit && ./kibela-import.ts --exported-from bitjourney test/fixtures/kibela-test-0.zip",
     "ping": "ts-node kibela-ping.ts"
   },
   "keywords": [],
