@@ -6,7 +6,7 @@ matrix:
   fast_finish: true
 cache: npm
 install: |
-  npm ci
+  npm install
   cp .env.sample .env
 script: |
   npm test
