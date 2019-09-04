@@ -74,7 +74,7 @@ const CreateComment = gql`
 
 const GetAuthor = gql`
   query GetAuthor($account: String!) {
-    user: userByAccount(account: $account) {
+    user: userFromAccount(account: $account) {
       id
       account
     }
