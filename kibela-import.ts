@@ -72,6 +72,18 @@ const CreateComment = gql`
   }
 `;
 
+// input = { account: String!, realName: String!, email: String! }
+const CreateDisabledUser = gql`
+mutation CreateDisabledUser($input: CreateDisabledUserInput!) {
+  createDisabledUser(input: $input) {
+    user {
+      id
+      account
+    }
+  }
+}
+`;
+
 const GetAuthor = gql`
   query GetAuthor($account: String!) {
     user: userFromAccount(account: $account) {
@@ -90,7 +102,7 @@ type AttachmentType = {
 
 type CommentType = {
   id: RelayId | null;
-  author: string;
+  author: AuthorType;
   content: string;
   publishedAt: Date;
 };
@@ -98,7 +110,7 @@ type CommentType = {
 type NoteType = {
   id: RelayId;
   path: string;
-  author: string;
+  author: AuthorType;
   title: string;
   content: string;
   folderName: string | null;
@@ -153,15 +165,34 @@ function stringIsPresent(s: string | null | undefined): s is string {
 
 const accountToAuthorCache = new Map<string, AuthorType>();
 
+
 async function getAuthor(account: string): Promise<AuthorType> {
   if (accountToAuthorCache.has(account)) {
     return accountToAuthorCache.get(account)!;
   } else {
+    try {
+      const result = await client.request({
+        query: GetAuthor,
+        variables: { account },
+      });
+      const user = result.data.user;
+      accountToAuthorCache.set(user.account, user);
+      return user;
+    } catch (e) {
+      console.warn(`Failed to get @${account}, creating it as a disabled user.`);
+    }
+
     const result = await client.request({
-      query: GetAuthor,
-      variables: { account },
+      query: CreateDisabledUser,
+      variables: {
+        input: {
+          account,
+          realName: account,
+          email: `${account}@dummy.example.com`,
+        },
+      },
     });
-    return result.data!.user;
+    return result.data.createDisabledUser.user;
   }
 }
 
@@ -211,7 +242,7 @@ async function createNote(filename: string, exportedContent: string): Promise<No
     };
   }
 
-  const authorId = null; // (await getAuthor(authorAccount)).id;
+  const author = await getAuthor(authorAccount);
 
   const result = await client.request({
     query: CreateNote,
@@ -222,7 +253,7 @@ async function createNote(filename: string, exportedContent: string): Promise<No
         coediting: true,
         groupIds: [], // TODO: speccified by --group option
         folderName,
-        authorId,
+        authorId: author.id,
         publishedAt,
       },
     },
@@ -231,7 +262,7 @@ async function createNote(filename: string, exportedContent: string): Promise<No
   return {
     id: result.data.createNote.note.id,
     path: result.data.createNote.note.path,
-    author: authorAccount,
+    author,
     title,
     content,
     folderName,
@@ -250,6 +281,9 @@ async function createComment(note, comment) {
     };
   }
 
+  const authorAccount: string = comment.author.replace(/^@/, "");
+  const author = await getAuthor(authorAccount);
+
   const result = await client.request({
     query: CreateComment,
     variables: {
@@ -257,7 +291,7 @@ async function createComment(note, comment) {
         commentableId: note.id,
         content: comment.content,
         publishedAt: new Date(comment.publishedAt),
-        authorId: null, // TODO
+        authorId: author.id,
       },
     },
   });
@@ -266,6 +300,7 @@ async function createComment(note, comment) {
     id: result.data.createComment.comment.id,
     path: result.data.createComment.comment.path,
     content: comment.content,
+    author,
     publishedAt: new Date(comment.publishedAt),
   };
 }
