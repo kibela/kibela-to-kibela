@@ -349,7 +349,7 @@ async function processZipArchives(zipArchives: ReadonlyArray<string>) {
               file: file.path,
               sourceId: getSourceId(file.path),
               destPath: newAttachment.path,
-              destId: newAttachment.id,
+              destRelayId: newAttachment.id,
             }) + "\n",
           );
         } else {
