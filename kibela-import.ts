@@ -23,9 +23,16 @@ commander
     "A Kibela team name that the archives come from",
     /^[a-zA-Z0-9-]+$/,
   )
+  .option("--private-groups", "Cretes groups as private when the target group does not exist")
   .parse(process.argv);
 
 const APPLY = commander.apply && !commander.dryRun;
+const PRIVATE_GROUPS = !!commander.privateGroups;
+if (PRIVATE_GROUPS) {
+  console.log("All the groups will be created as private.")
+} else {
+  console.log("All the groups will be created as public.")
+}
 
 const exportedFrom = commander.exportedFrom as (string | undefined);
 if (!stringIsPresent(exportedFrom)) {
@@ -34,6 +41,7 @@ if (!stringIsPresent(exportedFrom)) {
 }
 const kibelaDomainExportedFrom = `https://${exportedFrom}.kibe.la`;
 console.log(`The archives come from ${kibelaDomainExportedFrom}\n`);
+
 
 const TRANSACTION_ID = ulid();
 
@@ -72,16 +80,28 @@ const CreateComment = gql`
   }
 `;
 
-// input = { account: String!, realName: String!, email: String! }
-const CreateDisabledUser = gql`
-mutation CreateDisabledUser($input: CreateDisabledUserInput!) {
-  createDisabledUser(input: $input) {
-    user {
-      id
-      account
+// { name: String!, description: String!, isPrivate: Boolean!}
+const CreateGroup = gql`
+  mutation CreateGroup($input: CreateGroupInput!) {
+    createGroup(input: $input) {
+      group {
+        id
+        name
+      }
     }
   }
-}
+`;
+
+// input = { account: String!, realName: String!, email: String! }
+const CreateDisabledUser = gql`
+  mutation CreateDisabledUser($input: CreateDisabledUserInput!) {
+    createDisabledUser(input: $input) {
+      user {
+        id
+        account
+      }
+    }
+  }
 `;
 
 const GetAuthor = gql`
@@ -89,6 +109,23 @@ const GetAuthor = gql`
     user: userFromAccount(account: $account) {
       id
       account
+    }
+  }
+`;
+
+const GetAllGroups = gql`
+  query GetAllGroups($after: String) {
+    groups(first: 2, after: $after) {
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+      edges {
+        node {
+          id
+          name
+        }
+      }
     }
   }
 `;
@@ -164,8 +201,6 @@ function stringIsPresent(s: string | null | undefined): s is string {
 }
 
 const accountToAuthorCache = new Map<string, AuthorType>();
-
-
 async function getAuthor(account: string): Promise<AuthorType> {
   if (accountToAuthorCache.has(account)) {
     return accountToAuthorCache.get(account)!;
@@ -196,6 +231,56 @@ async function getAuthor(account: string): Promise<AuthorType> {
   }
 }
 
+type GroupType = {
+  id: RelayId;
+  name: string;
+};
+const groupCache = new Map<string, GroupType>();
+
+async function getAllGroups() {
+  let hasNextPage = false;
+  let after: string | null = null;
+  do {
+    const result = await client.request({
+      query: GetAllGroups,
+      variables: { after },
+    });
+
+    const { pageInfo, edges } = result.data.groups;
+
+    hasNextPage = pageInfo.hasNextPage;
+    after = pageInfo.endCursor;
+
+    for (const { node } of edges) {
+      groupCache.set(node.name, node);
+    }
+  } while (hasNextPage);
+}
+
+async function getGroup(name: string): Promise<GroupType> {
+  if (groupCache.size === 0) {
+    await getAllGroups();
+  }
+
+  const group = groupCache.get(name);
+  if (group) {
+    return group;
+  }
+
+  const result = await client.request({
+    query: CreateGroup,
+    variables: {
+      input: {
+        name,
+        description: "(created by kibela-to-kibela)",
+        isPrivate: PRIVATE_GROUPS,
+      },
+    },
+  });
+  const createdGroup: GroupType = result.data.createGroup.group;
+  groupCache.set(createdGroup.name, createdGroup);
+  return createdGroup;
+}
 /**
  *
  * @param filename "kibela-$team-$seq/(?:notes|blogs|wikis)/$folderName/$id-$title.md`
@@ -214,7 +299,7 @@ async function createNote(filename: string, exportedContent: string): Promise<No
     // ignore draft notes
     return null;
   }
-  const publishedAt = new Date(md.attributes["published_at"])
+  const publishedAt = new Date(md.attributes["published_at"]);
 
   const authorAccount = md.attributes.author.replace(/^@/, "");
   const folderName = extractFolderNameFromFilename(filename);
@@ -243,6 +328,11 @@ async function createNote(filename: string, exportedContent: string): Promise<No
   }
 
   const author = await getAuthor(authorAccount);
+  const groupIds: Array<RelayId> = [];
+  for (const groupName of md.attributes.groups) {
+    const group = await getGroup(groupName);
+    groupIds.push(group.id);
+  }
 
   const result = await client.request({
     query: CreateNote,
@@ -251,7 +341,7 @@ async function createNote(filename: string, exportedContent: string): Promise<No
         title,
         content,
         coediting: true,
-        groupIds: [], // TODO: speccified by --group option
+        groupIds,
         folderName,
         authorId: author.id,
         publishedAt,
