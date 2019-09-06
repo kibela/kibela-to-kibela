@@ -53,7 +53,7 @@ groupについては次のような振る舞いになっています。
 
 folderについても「同名のfolderがあればそこに、なければ新しいfolderを作ってそこに紐付ける」ですが、privateフラグはないので振る舞いとしてはずっとシンプルです。
 
-## kibela-fixup-contents.ts
+### kibela-fixup-contents.ts
 
 `kibela-import` でimportしたcontentにあるexport元のリンク / URL をimport先のものにベストエフォートで修正します。
 
