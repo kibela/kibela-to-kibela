@@ -17,7 +17,7 @@ kibela-import.ts 自体には重複実行を抑制する機能はないので、
 
 なお、unimportはnote, comment, attachmentのみを削除します。作成されたuserとgroupはunimportを実行しても削除されません。
 
-## 機能
+## コマンド
 
 ping以外のスクリプトはデフォルトで **dry-run** を行います。実際に適用するときは `--apply` オプションを与えてください。
 
@@ -29,7 +29,7 @@ Kibela Web APIを叩くための設定を確認するためのスクリプトで
 
 ### kibela-import.ts
 
-実際にリソースのimportを行うスクリプトです。また、NoteやCommen本文のパスも新しいチームのパスに修正します。
+実際にリソースのimportを行うスクリプトです。importするリソースはNote, Comment, Attachmentです。それぞれの更新履歴やLikeは維持されません。
 
 このスクリプトは最終的に `transaction-*.log` というログを生成します。
 
