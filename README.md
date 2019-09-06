@@ -6,24 +6,28 @@
 
 このスクリプトでimportしたコンテンツは、importスクリプトのログファイルに基づいて削除もできます。つまり、何度でも実行と実行の取り消しをできるようになっています。
 
-## TODO
+## importスクリプトの作業フロー概要
 
-* [ ] authorをベストエフォートで復元する
-* [ ] groupをベストエフォートで復元する
-* [ ] groupを指定するオプションの実装
-* [ ] 通知やウェブフックの発動などの抑制オプション
+1. kibela-import.ts の実行
+2. kibela-fixup-contents.ts の実行
+3. 内容を確認して問題があったら kibela-unimport.ts を実行して一旦削除する
+    * → 1. からやりなおし
+
+kibela-import.ts 自体には重複実行を抑制する機能はないので、問題があったら常にunimportする必要があります。
+
+なお、unimportはnote, comment, attachmentのみを削除します。作成されたuserとgroupはunimportを実行しても削除されません。
 
 ## 機能
 
 ping以外のスクリプトはデフォルトで **dry-run** を行います。実際に適用するときは `--apply` オプションを与えてください。
 
-### kibela-ping
+### kibela-ping.ts
 
 Kibela Web APIを叩くための設定を確認するためのスクリプトです。
 
 なおこの "ping" スクリプトはその他のスクリプトでも冒頭で呼ばれるようになっています。
 
-### kibela-import
+### kibela-import.ts
 
 実際にリソースのimportを行うスクリプトです。また、NoteやCommen本文のパスも新しいチームのパスに修正します。
 
@@ -39,7 +43,7 @@ Kibela Web APIを叩くための設定を確認するためのスクリプトで
 ./kibela-import.ts --exported-from <subdomain> [--apply] kibela-<subdomain>-<n>.zip...
 ```
 
-## kibela-fixup-contents
+## kibela-fixup-contents.ts
 
 `kibela-import` でimportしたcontentにあるexport元のリンク / URL をimport先のものにベストエフォートで修正します。
 
@@ -53,7 +57,7 @@ Kibela Web APIを叩くための設定を確認するためのスクリプトで
 ./kibela-fixup-contents.ts --exported-from <subdomain> [--apply] transactio-*.log
 ```
 
-### kibela-unimport
+### kibela-unimport.ts
 
 `kibela-import` でimportしたリソースを削除します。
 
