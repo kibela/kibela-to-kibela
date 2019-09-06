@@ -43,6 +43,16 @@ Kibela Web APIを叩くための設定を確認するためのスクリプトで
 ./kibela-import.ts --exported-from <subdomain> [--apply] kibela-<subdomain>-<n>.zip...
 ```
 
+groupについては次のような振る舞いになっています。
+
+* Noteをimporする際、同名のgroupがあればそこに、なければ新しいgroupをつくってそこに紐付ける
+  * 名前しかみないので、Home groupもあらかじめほかの名前をつけておくことで別groupとしてimportできる
+* privateかどうかは維持されない
+  * `--private-groups` オプションで一括で新規作成分をprivateにはできる
+* groupの説明や画像はimportされない
+
+folderについても「同名のfolderがあればそこに、なければ新しいfolderを作ってそこに紐付ける」ですが、privateフラグはないので振る舞いとしてはずっとシンプルです。
+
 ## kibela-fixup-contents.ts
 
 `kibela-import` でimportしたcontentにあるexport元のリンク / URL をimport先のものにベストエフォートで修正します。
