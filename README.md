@@ -1,6 +1,6 @@
 # Kibela to Kibela import script [![Build Status](https://travis-ci.org/kibela/kibela-to-kibela.svg?branch=master)](https://travis-ci.org/kibela/kibela-to-kibela)
 
-**注意: このスクリプトは現在開発中です。実際のデータで試すことはおすすめません。もし実行する場合は自己責任でお願いします。**
+**注意: このスクリプトは不可逆な操作をいくつか含みます。READMEをよく読んでから実行してください。**
 
 ある [Kibela](https://kibe.la) team の「エクスポート」機能でエクスポートしたZIPファイルを、ほかのKibela teamにimportしなおすスクリプトです。
 
