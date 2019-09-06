@@ -13,7 +13,7 @@
 3. 内容を確認して問題があったら kibela-unimport.ts を実行して一旦削除する
     * → 1. からやりなおし
 
-kibela-import.ts 自体には重複実行を抑制する機能はないので、問題があったら常にunimportする必要があります。
+kibela-import.ts 自体には重複実行を抑制する機能はないので、問題があったら常にunimportする必要があります。 また、^C (SIGINT) で中断したあとも必ずunimportでcleanupしてください。
 
 なお、unimportはnote, comment, attachmentのみを削除します。作成されたuserとgroupはunimportを実行しても削除されません。
 
@@ -94,6 +94,34 @@ code .env
 
 npm run ping # to test configurations
 ```
+
+## import詳細
+
+exportされたzipをもとにするので、そこにある情報のみimport可能です。
+
+### importされるもの
+
+* noteのtitle, content, folder, groups, author, published_at
+* commentのcontent, author, published_at
+* attachments （noteに添付されているもののみ）
+* groupのname
+  * 同名のgroupがあればそれを利用
+  * import先に存在しないgroupは生成する（unimort不可）
+* userのaccount
+  * 同名（accountが完全一致）のuserがいればそれを利用
+  * import先に存在しないユーザはdisabled userとして作成（unimport不可）
+
+## importされないもの
+
+* noteの変更履歴
+* commentの変更履歴
+* note template
+* groupのdescription, dashboardと所属メンバー
+* userのaccount以外の情報 (emailやrole含む)
+* 通知およびwatch状態
+* like
+* access token
+* 各種ログ（audit logsやacces token logs）
 
 ## See Also
 
