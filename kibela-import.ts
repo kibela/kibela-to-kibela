@@ -179,7 +179,7 @@ async function getAuthor(account: string): Promise<AuthorType> {
       accountToAuthorCache.set(user.account, user);
       return user;
     } catch (e) {
-      console.warn(`Failed to get @${account}, creating it as a disabled user.`);
+      console.log(`    Failed to get @${account}, creating it as a disabled user.`);
     }
 
     const result = await client.request({
