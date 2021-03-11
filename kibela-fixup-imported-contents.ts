@@ -47,6 +47,9 @@ const newUrlPrefix = `https://${TEAM}.kibe.la`;
 // URLs are handled by the next secrion
 const mdLinkPattern = /\[[^\[]+\]\(([/\.][^\)]*)\)+/g;
 
+const attachmentSrcPattern = /src=["'](.*\/attachments\/.+?)["']/g;
+const attachmentMdPattern = /\[.*?\]\((.*\/attachments\/.+?)\)/g;
+
 type RelayId = unknown;
 
 type LogType = Readonly<{
@@ -137,6 +140,12 @@ function fixupContent(baseContent: string) {
     newContent = fixupContentWithMatchedResult(newContent, matched);
   }
   while ((matched = rawUrlPattern.exec(baseContent))) {
+    newContent = fixupContentWithMatchedResult(newContent, matched);
+  }
+  while ((matched = attachmentSrcPattern.exec(baseContent))) {
+    newContent = fixupContentWithMatchedResult(newContent, matched);
+  }
+  while ((matched = attachmentMdPattern.exec(baseContent))) {
     newContent = fixupContentWithMatchedResult(newContent, matched);
   }
 
