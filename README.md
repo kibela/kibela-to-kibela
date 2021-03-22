@@ -15,7 +15,7 @@
 
 kibela-import.ts 自体には重複実行を抑制する機能はないので、問題があったら常にunimportする必要があります。 また、^C (SIGINT) で中断したあとも必ずunimportでcleanupしてください。
 
-なお、unimportはnote, comment, attachmentのみを削除します。作成されたuserとgroupはunimportを実行しても削除されません。
+なお、unimportはnote, comment, attachmentのみを削除します。作成されたuserとgroupとfolderはunimportを実行しても削除されません。
 
 ## コマンド
 
@@ -51,7 +51,7 @@ groupについては次のような振る舞いになっています。
   * `--private-groups` オプションで一括で新規作成分をprivateにはできる
 * groupの説明や画像はimportされない
 
-folderについても「同名のfolderがあればそこに、なければ新しいfolderを作ってそこに紐付ける」ですが、privateフラグはないので振る舞いとしてはずっとシンプルです。
+folderについても「同名のfolderがあればそこに、なければ新しいfolderを作ってそこに紐付ける」ですが、privateフラグはなく所属するグループに準じるので振る舞いとしてはずっとシンプルです。
 
 ### kibela-fixup-contents.ts
 
@@ -101,12 +101,16 @@ exportされたzipをもとにするので、そこにある情報のみimport�
 
 ### importされるもの
 
-* noteのtitle, content, folder, groups, author, published_at
+* noteのtitle, content, groups, folders, author, published_at
 * commentのcontent, author, published_at
 * attachments （noteに添付されているもののみ）
 * groupのname
   * 同名のgroupがあればそれを利用
   * import先に存在しないgroupは生成する（unimort不可）
+* folderのname
+  * 所属するGroup以下の階層を保持
+  * 同名のfolderがあればそれを利用
+  * import先に存在しないfolderは生成する（unimort不可）
 * userのaccount
   * 同名（accountが完全一致）のuserがいればそれを利用
   * import先に存在しないユーザはdisabled userとして作成（unimport不可）
