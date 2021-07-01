@@ -7,7 +7,9 @@
     "node": ">= 10"
   },
   "scripts": {
-    "test": "tsc && ts-node kibela-import.ts --exported-from bitjourney test/fixtures/kibela-test-0.zip",
+    "test": "npm run test:import && npm run test:fixup",
+    "test:import": "tsc && ts-node kibela-import.ts --exported-from test test/fixtures/kibela-test-0.zip",
+    "test:fixup": "tsc && ts-node kibela-fixup-imported-contents.ts --exported-from test test/fixtures/transaction-01F14RJCJ77SG2D5MPZCAMV8J7.log",
     "ping": "ts-node kibela-ping.ts"
   },
   "keywords": [],

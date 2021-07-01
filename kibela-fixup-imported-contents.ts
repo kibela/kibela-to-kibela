@@ -153,7 +153,9 @@ function fixupContent(baseContent: string) {
 }
 
 async function main(logFiles: ReadonlyArray<string>) {
-  await ping();
+  if (APPLY) {
+    await ping();
+  }
 
   for (const logFile of logFiles) {
     console.log(`Loading ${logFile}`);
@@ -249,12 +251,4 @@ async function main(logFiles: ReadonlyArray<string>) {
   }
 }
 
-function test() {
-  console.log("https://foo.kibe.la/", "to", getDestPath("https://foo.kibe.la/"));
-}
-
-if (!process.env.KIBELA_TO_KIBELA_TEST) {
-  main(commander.args);
-} else {
-  test();
-}
+main(commander.args);

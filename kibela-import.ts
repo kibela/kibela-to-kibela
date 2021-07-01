@@ -144,13 +144,18 @@ type CommentType = {
   publishedAt: Date;
 };
 
+type FolderType = {
+  groupId: RelayId | null;
+  folderName: string;
+};
+
 type NoteType = {
   id: RelayId;
   path: string;
   author: AuthorType;
   title: string;
   content: string;
-  folderName: string | null;
+  folders: ReadonlyArray<FolderType>;
   publishedAt: Date;
 
   comments: ReadonlyArray<CommentType>;
@@ -277,20 +282,13 @@ async function getGroup(name: string): Promise<GroupType> {
       },
     },
   });
+
   const createdGroup: GroupType = result.data.createGroup.group;
   groupCache.set(createdGroup.name, createdGroup);
   return createdGroup;
 }
-/**
- *
- * @param filename "kibela-$team-$seq/(?:notes|blogs|wikis)/$folderName/$id-$title.md`
- */
-function extractFolderNameFromFilename(filename: string): string | null {
-  const matched = /[^/]+\/(?:notes|blogs|wikis)\/(?:(.+)\/)?[^/]+$/iu.exec(filename);
-  return matched && matched[1];
-}
 
-async function createNote(filename: string, exportedContent: string): Promise<NoteType | null> {
+async function createNote(exportedContent: string): Promise<NoteType | null> {
   const md = frontMatter<any>(exportedContent);
 
   const [, title, content] = /^# +([^\n]*)\n\n(.*)/s.exec(md.body)!;
@@ -302,7 +300,24 @@ async function createNote(filename: string, exportedContent: string): Promise<No
   const publishedAt = new Date(md.attributes["published_at"]);
 
   const authorAccount = md.attributes.author.replace(/^@/, "");
-  const folderName = extractFolderNameFromFilename(filename);
+  const folders: ReadonlyArray<FolderType> = await Promise.all<FolderType>(
+    (md.attributes.folders || []).map(async (names: string) => {
+      const [groupName, folderName] = names.split(" / ");
+      let group: GroupType;
+      if (APPLY) {
+        group = await getGroup(groupName);
+      } else {
+        group = {
+          id: "dummy",
+          name: "dummy",
+        }
+      }
+      return {
+        groupId: group.id,
+        folderName,
+      };
+    })
+  )
   const comments: ReadonlyArray<CommentType> = md.attributes.comments.map((c) => {
     return {
       id: null,
@@ -321,7 +336,7 @@ async function createNote(filename: string, exportedContent: string): Promise<No
       author: authorAccount,
       title,
       content,
-      folderName,
+      folders,
       publishedAt,
       comments,
     };
@@ -342,7 +357,7 @@ async function createNote(filename: string, exportedContent: string): Promise<No
         content,
         coediting: true,
         groupIds,
-        folderName,
+        folders,
         authorId: author.id,
         publishedAt,
       },
@@ -355,7 +370,7 @@ async function createNote(filename: string, exportedContent: string): Promise<No
     author,
     title,
     content,
-    folderName,
+    folders,
     publishedAt,
     comments,
   };
@@ -423,6 +438,9 @@ async function processZipArchives(zipArchives: ReadonlyArray<string>) {
 
     for (const file of directory.files) {
       const buffer = await file.buffer();
+      if (buffer.byteLength === 0) {
+        continue;
+      }
 
       const idTag = (++id).toString().padStart(5, "0");
       const label = APPLY ? "Processing" : "Processing (dry-run)";
@@ -444,7 +462,7 @@ async function processZipArchives(zipArchives: ReadonlyArray<string>) {
           );
         } else {
           const markdownWithFrontMatter = buffer.toString("utf-8");
-          const newNote = await createNote(file.path, markdownWithFrontMatter);
+          const newNote = await createNote(markdownWithFrontMatter);
           if (newNote == null) {
             continue;
           }

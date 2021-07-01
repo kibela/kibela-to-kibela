@@ -6,3 +6,4 @@ build/
 real-world-data/
 tmp/
 *.log
+!/test/fixtures/*.log
